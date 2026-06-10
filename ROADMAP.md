@@ -8,7 +8,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 ## Almost free (infrastructure already exists)
 
-- [ ] **Related notes panel** — bottom of the editor shows the 3–4 most similar notes (cosine over existing embeddings, threshold ~0.35), click to open. Makes the semantic engine visible without searching.
+- [x] **Related notes panel** — bottom of the editor shows the 3–4 most similar notes (cosine over existing embeddings, threshold ~0.35), click to open. Makes the semantic engine visible without searching.
 - [ ] **Snooze on reminder banners** — 15 min / 1 h / tomorrow chips on due banners; re-arms via `set_action_due`.
 - [ ] **Highlight search matches in opened note** — after opening a keyword-search result, matched terms get a mark-style decoration in the editor; first hit scrolled into view.
 

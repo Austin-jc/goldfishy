@@ -58,6 +58,7 @@ pub fn run() {
             commands::dismiss_folder_suggestion,
             commands::list_notes,
             commands::search_notes,
+            commands::related_notes,
             commands::list_folders,
             commands::create_folder,
             commands::rename_folder,

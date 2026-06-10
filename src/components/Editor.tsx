@@ -40,6 +40,7 @@ import { api } from "../api";
 import { useStore } from "../store";
 import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { isImagePath, relativeTime } from "../utils";
+import type { Note } from "../types";
 
 const lowlight = createLowlight(common);
 
@@ -417,9 +418,10 @@ function EditorInner({ noteId }: { noteId: string }) {
           </div>
 
           <EditorContent editor={editor} />
+          <RelatedNotes noteId={noteId} />
           {/* generous click target below the text to keep writing */}
           <div
-            className="h-48"
+            className="h-40"
             onClick={() => editor?.chain().focus("end").run()}
           />
         </div>
@@ -427,6 +429,60 @@ function EditorInner({ noteId }: { noteId: string }) {
 
       {editor && <SelectionMenu editor={editor} />}
     </main>
+  );
+}
+
+/** The most similar notes (by embedding), surfaced quietly under the text. */
+function RelatedNotes({ noteId }: { noteId: string }) {
+  const embStatus = useStore((s) => s.selectedNote?.embedding_status);
+  const [related, setRelated] = useState<Note[]>([]);
+
+  // Re-query when the note re-embeds, so the list tracks content changes.
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .relatedNotes(noteId)
+      .then((r) => {
+        if (!cancelled) setRelated(r);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [noteId, embStatus]);
+
+  if (related.length === 0) return null;
+  return (
+    <div className="fade-in mt-12">
+      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-stone-600">
+        <Sparkles size={10} className="text-sage-500" />
+        Related notes
+      </p>
+      <div className="mt-1 space-y-0.5">
+        {related.map((n) => (
+          <button
+            key={n.id}
+            onClick={() => void useStore.getState().selectNote(n.id)}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-stone-900"
+          >
+            <FileText size={12} className="shrink-0 text-stone-600" />
+            <span className="truncate text-xs text-stone-300">
+              {n.title || "Untitled"}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              {typeof n.score === "number" && (
+                <span className="rounded bg-stone-900 px-1 text-[9px] text-stone-500">
+                  {(n.score * 100).toFixed(0)}%
+                </span>
+              )}
+              <span className="text-[9px] text-stone-600">
+                {relativeTime(n.updated_at)}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -279,6 +279,53 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
     }
 }
 
+/// Most similar notes to the given one, by embedding cosine similarity.
+#[tauri::command]
+pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Note>> {
+    let state = app.state::<AppState>();
+    let scored: Vec<(String, f32)> = {
+        let db = state.db.lock().unwrap();
+        let target: Option<Vec<u8>> = db
+            .query_row(
+                "SELECT embedding FROM notes WHERE id = ?1",
+                params![note_id],
+                |r| r.get(0),
+            )
+            .map_err(estr)?;
+        let Some(target) = target else {
+            return Ok(vec![]); // not embedded yet — the panel just stays hidden
+        };
+        let qv = embed::from_blob(&target);
+        let mut stmt = db
+            .prepare("SELECT id, embedding FROM notes WHERE embedding IS NOT NULL AND id != ?1")
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map(params![note_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(estr)?;
+        rows.filter_map(|r| r.ok())
+            .map(|(id, blob)| {
+                let score = embed::cosine(&qv, &embed::from_blob(&blob));
+                (id, score)
+            })
+            .collect()
+    };
+    let mut scored = scored;
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, s)| *s > 0.35);
+    scored.truncate(4);
+
+    let ids: Vec<String> = scored.iter().map(|(id, _)| id.clone()).collect();
+    let db = state.db.lock().unwrap();
+    let mut notes = db::get_notes_by_ids(&db, &ids).map_err(eanyhow)?;
+    let score_map: HashMap<&str, f32> = scored.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+    for n in notes.iter_mut() {
+        n.score = score_map.get(n.id.as_str()).copied();
+    }
+    Ok(notes)
+}
+
 // ---------------------------------------------------------------- folders & tags
 
 #[tauri::command]

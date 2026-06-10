@@ -46,6 +46,7 @@ export const api = {
     invoke<Note>("dismiss_folder_suggestion", { noteId }),
   searchNotes: (query: string, mode: SearchMode) =>
     invoke<Note[]>("search_notes", { query, mode }),
+  relatedNotes: (noteId: string) => invoke<Note[]>("related_notes", { noteId }),
 
   // folders & tags
   listFolders: () => invoke<Folder[]>("list_folders"),
