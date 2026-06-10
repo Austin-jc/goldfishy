@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  Combine,
   FilePlus,
   FileText,
   Folder as FolderIcon,
@@ -414,6 +415,17 @@ export default function Sidebar() {
                     : `Auto-title ${untitledCount} untitled note${untitledCount === 1 ? "" : "s"}`}
                 </button>
               )}
+
+            {tagFilter.length === 0 && notes.length >= 4 && (
+              <button
+                onClick={() => useStore.getState().setSimilarOpen(true)}
+                title="Find clusters of overlapping notes and merge them"
+                className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-stone-500 transition-colors hover:text-clay-300"
+              >
+                <Combine size={11} />
+                Tidy up similar notes
+              </button>
+            )}
 
             {/* pinned shortcuts — notes also stay in their tree position */}
             {pinnedNotes.length > 0 && (

@@ -68,6 +68,8 @@ pub fn run() {
             commands::list_notes,
             commands::search_notes,
             commands::related_notes,
+            commands::find_similar_notes,
+            commands::merge_notes,
             commands::list_folders,
             commands::create_folder,
             commands::move_folder,

@@ -37,4 +37,4 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 ## AI organization
 
-- [ ] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.
+- [x] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.

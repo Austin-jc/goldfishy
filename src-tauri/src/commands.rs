@@ -390,6 +390,192 @@ pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Not
     Ok(notes)
 }
 
+// ---------------------------------------------------------------- similar notes
+
+fn uf_find(parent: &mut [usize], mut i: usize) -> usize {
+    while parent[i] != i {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+    }
+    i
+}
+
+/// Clusters of highly similar notes (embedding cosine ≥ 0.80), candidates
+/// for merging. Groups are oldest-first; capped to keep the review digestible.
+#[tauri::command]
+pub async fn find_similar_notes(app: AppHandle) -> CmdResult<Vec<Vec<Note>>> {
+    const THRESHOLD: f32 = 0.80;
+    const MAX_GROUPS: usize = 10;
+    const MAX_GROUP_SIZE: usize = 6;
+
+    let state = app.state::<AppState>();
+    let (ids, vecs): (Vec<String>, Vec<Vec<f32>>) = {
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id, embedding FROM notes
+                 WHERE embedding IS NOT NULL AND deleted_at IS NULL",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(estr)?;
+        let mut ids = Vec::new();
+        let mut vecs = Vec::new();
+        for row in rows.filter_map(|r| r.ok()) {
+            ids.push(row.0);
+            vecs.push(embed::from_blob(&row.1));
+        }
+        (ids, vecs)
+    };
+
+    let n = ids.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if embed::cosine(&vecs[i], &vecs[j]) >= THRESHOLD {
+                let (ri, rj) = (uf_find(&mut parent, i), uf_find(&mut parent, j));
+                if ri != rj {
+                    parent[rj] = ri;
+                }
+            }
+        }
+    }
+
+    let mut clusters: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let root = uf_find(&mut parent, i);
+        clusters.entry(root).or_default().push(i);
+    }
+
+    let db = state.db.lock().unwrap();
+    let mut groups: Vec<Vec<Note>> = Vec::new();
+    for members in clusters.into_values() {
+        if members.len() < 2 {
+            continue;
+        }
+        let member_ids: Vec<String> = members
+            .into_iter()
+            .take(MAX_GROUP_SIZE)
+            .map(|i| ids[i].clone())
+            .collect();
+        let mut notes = db::get_notes_by_ids(&db, &member_ids).map_err(eanyhow)?;
+        notes.sort_by_key(|n| n.created_at);
+        groups.push(notes);
+    }
+    // Biggest clusters first — they're the most worth cleaning up.
+    groups.sort_by_key(|g| std::cmp::Reverse(g.len()));
+    groups.truncate(MAX_GROUPS);
+    Ok(groups)
+}
+
+fn concat_notes(notes: &[Note]) -> String {
+    notes
+        .iter()
+        .map(|n| {
+            let title = if n.title.trim().is_empty() { "Untitled" } else { n.title.trim() };
+            format!("## {}\n\n{}", title, n.content.trim())
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n")
+}
+
+/// Merge the given notes into the oldest one: content combined (LLM when
+/// available, plain concatenation otherwise), tags unioned, action items
+/// re-linked, the other notes moved to Trash. Fully recoverable: the target
+/// is version-snapshotted and the sources sit in Trash for 30 days.
+#[tauri::command]
+pub async fn merge_notes(app: AppHandle, note_ids: Vec<String>) -> CmdResult<Note> {
+    if note_ids.len() < 2 {
+        return Err("Select at least two notes to merge".into());
+    }
+    let (notes, llm_ready) = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        let mut notes = Vec::new();
+        for id in &note_ids {
+            if let Ok(n) = db::get_note(&db, id) {
+                if n.deleted_at.is_none() {
+                    notes.push(n);
+                }
+            }
+        }
+        (notes, db::load_settings(&db).llm_backend != "none")
+    };
+    if notes.len() < 2 {
+        return Err("These notes are no longer available".into());
+    }
+
+    let target = notes.iter().min_by_key(|n| n.created_at).unwrap().clone();
+
+    queue::set_activity(
+        &app,
+        Some((format!("Merging {} similar notes…", notes.len()), Some(target.id.clone()))),
+    );
+    let merged_content = if llm_ready {
+        match ai::merge_notes_text(&app, &notes).await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[merge] LLM merge failed, falling back to concat: {e:#}");
+                concat_notes(&notes)
+            }
+        }
+    } else {
+        concat_notes(&notes)
+    };
+    queue::set_activity(&app, None);
+
+    let title = if target.title.trim().is_empty() {
+        notes
+            .iter()
+            .map(|n| n.title.trim())
+            .find(|t| !t.is_empty())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        target.title.clone()
+    };
+
+    let now = now_ms();
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db::snapshot_note(&db, &target.id, &target.title, &target.content).map_err(eanyhow)?;
+    db.execute(
+        "UPDATE notes SET title = ?1, content = ?2, updated_at = ?3,
+                embedding_status = 'STALE', llm_status = 'STALE'
+         WHERE id = ?4",
+        params![title, merged_content, now, target.id],
+    )
+    .map_err(estr)?;
+    for n in &notes {
+        if n.id == target.id {
+            continue;
+        }
+        db.execute(
+            "INSERT OR IGNORE INTO note_tags(note_id, tag, source)
+             SELECT ?1, tag, source FROM note_tags WHERE note_id = ?2",
+            params![target.id, n.id],
+        )
+        .map_err(estr)?;
+        db.execute(
+            "UPDATE action_items SET note_id = ?1 WHERE note_id = ?2",
+            params![target.id, n.id],
+        )
+        .map_err(estr)?;
+        db.execute(
+            "UPDATE notes SET deleted_at = ?1, pinned = 0 WHERE id = ?2",
+            params![now, n.id],
+        )
+        .map_err(estr)?;
+    }
+    let note = db::get_note(&db, &target.id).map_err(eanyhow)?;
+    let _ = app.emit("note-updated", &note);
+    let _ = app.emit("action-items-changed", ());
+    Ok(note)
+}
+
 // ---------------------------------------------------------------- folders & tags
 
 #[tauri::command]

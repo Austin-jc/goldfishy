@@ -575,6 +575,34 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
     Ok(db::get_note(&db, note_id)?)
 }
 
+/// Merge several overlapping notes into one coherent markdown document.
+pub async fn merge_notes_text(app: &AppHandle, notes: &[Note]) -> Result<String> {
+    let mut corpus = String::new();
+    for n in notes {
+        corpus.push_str(&format!(
+            "### {}\n{}\n\n",
+            if n.title.trim().is_empty() { "(untitled)" } else { n.title.trim() },
+            truncate_chars(&n.content, 6000),
+        ));
+        if corpus.len() > 24_000 {
+            break;
+        }
+    }
+    let system = "You merge overlapping personal notes into one well-organized markdown note. Reply with ONLY the merged markdown — no preamble.";
+    let user = format!(
+        "Merge these {} overlapping notes into a single coherent markdown note. Preserve every \
+         distinct fact, link, image reference and task. Remove duplicated information. Organize \
+         with short headings where it helps.\n\n{corpus}",
+        notes.len()
+    );
+    let reply = chat(app, system, &user, 3072, None).await?;
+    let merged = strip_fences(&reply);
+    if merged.trim().is_empty() {
+        bail!("LLM returned an empty merge result");
+    }
+    Ok(merged)
+}
+
 /// Generate a short title for an untitled note. Returns the note unchanged
 /// if it has been titled in the meantime or has no content.
 pub async fn generate_title(app: &AppHandle, note_id: &str) -> Result<Note> {

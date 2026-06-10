@@ -35,6 +35,14 @@ function buildCommands(close: () => void): Command[] {
         void useStore.getState().createNote();
       },
     },
+    {
+      label: "Tidy up: find & merge similar notes",
+      icon: <Sparkles size={14} />,
+      run: () => {
+        close();
+        useStore.getState().setSimilarOpen(true);
+      },
+    },
     ...(llmReady
       ? [
           {

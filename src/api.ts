@@ -59,6 +59,8 @@ export const api = {
   searchNotes: (query: string, mode: SearchMode) =>
     invoke<Note[]>("search_notes", { query, mode }),
   relatedNotes: (noteId: string) => invoke<Note[]>("related_notes", { noteId }),
+  findSimilarNotes: () => invoke<Note[][]>("find_similar_notes"),
+  mergeNotes: (noteIds: string[]) => invoke<Note>("merge_notes", { noteIds }),
 
   // folders & tags
   listFolders: () => invoke<Folder[]>("list_folders"),

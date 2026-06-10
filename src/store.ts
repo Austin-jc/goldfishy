@@ -39,6 +39,8 @@ interface Store {
   searching: boolean;
   settingsOpen: boolean;
   paletteOpen: boolean;
+  /** "Tidy up similar notes" review modal. */
+  similarOpen: boolean;
   sidebarCollapsed: boolean;
   theme: string;
   toasts: Toast[];
@@ -69,6 +71,7 @@ interface Store {
   setSearching: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
+  setSimilarOpen: (b: boolean) => void;
   toggleSidebar: () => void;
   setTheme: (theme: string) => void;
   setActionsOpen: (b: boolean) => void;
@@ -96,6 +99,7 @@ export const useStore = create<Store>((set, get) => ({
   searching: false,
   settingsOpen: false,
   paletteOpen: false,
+  similarOpen: false,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   toasts: [],
@@ -221,6 +225,7 @@ export const useStore = create<Store>((set, get) => ({
   setSearching: (searching) => set({ searching }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  setSimilarOpen: (similarOpen) => set({ similarOpen }),
   toggleSidebar: () =>
     set((s) => {
       const sidebarCollapsed = !s.sidebarCollapsed;
