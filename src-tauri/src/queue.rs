@@ -252,6 +252,8 @@ async fn tick(app: &AppHandle) -> Result<()> {
                 let mut label = title.trim().to_string();
                 if label.is_empty() {
                     label = "Untitled".to_string();
+                }
+                if settings.auto_title && title.trim().is_empty() {
                     set_activity(
                         app,
                         Some(("Titling an untitled note…".to_string(), Some(id.clone()))),

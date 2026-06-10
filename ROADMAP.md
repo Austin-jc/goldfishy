@@ -4,7 +4,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 ## Foundations
 
-- [ ] **Per-feature AI toggles** — every automatic AI behavior individually switchable in Settings: auto-tagging (exists via max-tags=0), folder suggestions, auto-titling, action extraction (exists). Manual buttons stay gated only by having an LLM backend.
+- [x] **Per-feature AI toggles** — every automatic AI behavior individually switchable in Settings: auto-tagging (exists via max-tags=0), folder suggestions, auto-titling, action extraction (exists). Manual buttons stay gated only by having an LLM backend.
 
 ## Almost free (infrastructure already exists)
 

@@ -84,6 +84,10 @@ pub struct AppSettings {
     pub hf_repo: String,
     /// Max tags the auto-tagger may apply per note (0 disables auto-tagging).
     pub auto_tag_max: u32,
+    /// Generate titles for untitled notes in the LLM pipeline.
+    pub auto_title: bool,
+    /// Let the AI suggest a destination folder while organizing.
+    pub suggest_folders: bool,
     /// Extract action items automatically as part of the LLM pipeline.
     pub extract_actions: bool,
     /// Show due reminders as in-app banners.
@@ -107,6 +111,8 @@ impl Default for AppSettings {
             sidecar_port: 8757,
             hf_repo: "".into(),
             auto_tag_max: 2,
+            auto_title: true,
+            suggest_folders: true,
             extract_actions: true,
             notify_in_app: true,
             notify_system: true,

@@ -237,7 +237,7 @@ pub async fn chat(
 /// Queue 2 task: suggest 3 tags and a destination folder for a note.
 pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> {
     let state = app.state::<AppState>();
-    let (input, title, content, folders, existing_tags, max_tags) = {
+    let (input, title, content, folders, existing_tags, max_tags, suggest_folders) = {
         let db = state.db.lock().unwrap();
         let note = db::get_note(&db, note_id)?;
         let folders = db::list_folders(&db)?;
@@ -254,6 +254,7 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
             folders,
             existing_tags,
             settings.auto_tag_max.min(5) as usize,
+            settings.suggest_folders,
         )
     };
 
@@ -273,10 +274,17 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
              that merely appear in the note without describing it."
         )
     };
+    let folder_instructions = if suggest_folders {
+        format!(
+            "Also choose the single best destination folder for the note from this list: \
+             {folders_json}. Use null for the folder if none fits well or the list is empty."
+        )
+    } else {
+        "Use null for the folder.".to_string()
+    };
     let user = format!(
         "{tag_instructions}\n\
-         Also choose the single best destination folder for the note from this list: \
-         {folders_json}. Use null for the folder if none fits well or the list is empty.\n\n\
+         {folder_instructions}\n\n\
          NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
          Reply with JSON exactly like: {{\"tags\": [\"tag1\"], \"folder\": \"folder name or null\"}}",
         truncate_chars(&title, 200),
@@ -322,7 +330,11 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
                 .collect()
         })
         .unwrap_or_default();
-    let folder_name = parsed["folder"].as_str().map(str::to_string);
+    let folder_name = if suggest_folders {
+        parsed["folder"].as_str().map(str::to_string)
+    } else {
+        None
+    };
 
     let db = state.db.lock().unwrap();
     db.execute(

@@ -358,7 +358,7 @@ pub async fn ai_process_note(app: AppHandle, note_id: String) -> CmdResult<Note>
         let title: String = db
             .query_row("SELECT title FROM notes WHERE id = ?1", params![note_id], |r| r.get(0))
             .map_err(estr)?;
-        title.trim().is_empty()
+        title.trim().is_empty() && db::load_settings(&db).auto_title
     };
     if untitled {
         if let Err(e) = ai::generate_title(&app, &note_id).await {

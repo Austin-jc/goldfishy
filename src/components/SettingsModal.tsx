@@ -378,6 +378,18 @@ export default function SettingsModal() {
                   ))}
                 </div>
               </div>
+              <ToggleRow
+                label="Auto-title untitled notes"
+                desc="Generate a title when a note is left untitled (also applies to the Organize button)."
+                value={local.auto_title}
+                onChange={(v) => set("auto_title", v)}
+              />
+              <ToggleRow
+                label="Suggest destination folders"
+                desc="Let the AI propose where to file a note while organizing; you always confirm."
+                value={local.suggest_folders}
+                onChange={(v) => set("suggest_folders", v)}
+              />
               <div className="flex gap-4">
                 <Field label="Embedding debounce (seconds)" className="flex-1">
                   <input

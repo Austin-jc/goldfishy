@@ -60,6 +60,8 @@ export interface AppSettings {
   sidecar_port: number;
   hf_repo: string;
   auto_tag_max: number;
+  auto_title: boolean;
+  suggest_folders: boolean;
   extract_actions: boolean;
   notify_in_app: boolean;
   notify_system: boolean;
