@@ -47,6 +47,7 @@ import { api } from "../api";
 import { useStore } from "../store";
 import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { findTermRanges, TermHighlight } from "../editor/highlight";
+import { SlashCommands } from "../editor/slash";
 import { isImagePath, relativeTime } from "../utils";
 import type { Note } from "../types";
 
@@ -139,11 +140,14 @@ function EditorInner({ noteId }: { noteId: string }) {
       CodeBlockLowlight.configure({ lowlight }),
       LocalImage,
       Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: "Start writing… markdown works." }),
+      Placeholder.configure({
+        placeholder: "Start writing… markdown works, “/” inserts blocks.",
+      }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown.configure({ html: false, linkify: true }),
       TermHighlight,
+      SlashCommands,
     ],
     content: note.content,
     editorProps: {
