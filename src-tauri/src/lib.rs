@@ -37,6 +37,44 @@ pub fn run() {
                 last_backup_check: Arc::new(AtomicI64::new(0)),
             });
             queue::spawn_worker(app.handle().clone());
+
+            // Quick-capture: a small hidden always-on-top window summoned by
+            // a global shortcut; Enter files the text as a new note.
+            let capture = tauri::WebviewWindowBuilder::new(
+                app,
+                "capture",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Quick capture")
+            .inner_size(540.0, 200.0)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .visible(false)
+            .skip_taskbar(true)
+            .center()
+            .build();
+            if let Err(e) = capture {
+                eprintln!("[capture] window unavailable: {e}");
+            }
+            {
+                use tauri_plugin_global_shortcut::{Builder as GsBuilder, GlobalShortcutExt, ShortcutState};
+                app.handle().plugin(
+                    GsBuilder::new()
+                        .with_handler(|app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                if let Some(win) = app.get_webview_window("capture") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+                if let Err(e) = app.handle().global_shortcut().register("CmdOrCtrl+Shift+N") {
+                    eprintln!("[capture] global shortcut unavailable: {e}");
+                }
+            }
             // Warm the embedder off the UI thread right away: the first-launch
             // model download starts immediately (with visible status) instead
             // of surprising the user mid-typing.

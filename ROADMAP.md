@@ -33,7 +33,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 ## Desktop-native
 
-- [ ] **Global quick-capture** — system-wide shortcut opens a small always-on-top capture window; Enter files the text as a new note (auto-title/tags pick it up later); Esc dismisses.
+- [x] **Global quick-capture** — system-wide shortcut opens a small always-on-top capture window; Enter files the text as a new note (auto-title/tags pick it up later); Esc dismisses.
 
 ## AI organization
 

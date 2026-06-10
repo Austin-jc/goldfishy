@@ -50,6 +50,14 @@ export default function App() {
           "success",
         );
       }),
+      listen<string>("note-captured", (e) => {
+        const st = useStore.getState();
+        void st.refreshNotes();
+        st.toast("Note captured", "success", {
+          label: "Open",
+          run: () => void useStore.getState().selectNote(e.payload),
+        });
+      }),
     ];
     return () => {
       for (const p of unsubs) void p.then((u) => u());
