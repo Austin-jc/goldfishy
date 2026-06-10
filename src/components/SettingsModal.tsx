@@ -469,6 +469,57 @@ export default function SettingsModal() {
                 Export all as JSON
               </button>
             </div>
+            <div className="mt-3 space-y-2 rounded-lg border border-stone-800 p-3">
+              <Field label="Automatic backup folder (markdown snapshots; leave empty to disable)">
+                <div className="flex gap-2">
+                  <input
+                    value={local.backup_dir}
+                    onChange={(e) => set("backup_dir", e.target.value)}
+                    placeholder="/path/to/backups"
+                    className={inputCls + " flex-1"}
+                  />
+                  <button
+                    onClick={async () => {
+                      const dir = await open({ directory: true, multiple: false });
+                      if (typeof dir === "string") set("backup_dir", dir);
+                    }}
+                    className={btnCls}
+                  >
+                    <FolderOpen size={12} /> Browse
+                  </button>
+                </div>
+              </Field>
+              <div className="flex items-end gap-3">
+                <Field label="Backup every (days)">
+                  <input
+                    type="number"
+                    min={1}
+                    value={local.backup_interval_days}
+                    onChange={(e) =>
+                      set("backup_interval_days", Math.max(1, Number(e.target.value) || 7))
+                    }
+                    className={inputCls + " w-24"}
+                  />
+                </Field>
+                <button
+                  onClick={async () => {
+                    if (!(await save())) return;
+                    try {
+                      const res = await api.backupNow();
+                      useStore.getState().toast(
+                        `Backed up ${res.count} notes to ${res.path}`,
+                        "success",
+                      );
+                    } catch (e) {
+                      useStore.getState().toast(String(e), "error");
+                    }
+                  }}
+                  className={btnCls}
+                >
+                  Back up now
+                </button>
+              </div>
+            </div>
           </section>
         </div>
 

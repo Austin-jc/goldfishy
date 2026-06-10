@@ -108,6 +108,10 @@ pub struct AppSettings {
     pub notify_in_app: bool,
     /// Fire native system notifications for due reminders.
     pub notify_system: bool,
+    /// Folder for periodic markdown backups; empty = backups off.
+    pub backup_dir: String,
+    /// Days between automatic backups.
+    pub backup_interval_days: u32,
 }
 
 impl Default for AppSettings {
@@ -130,6 +134,8 @@ impl Default for AppSettings {
             extract_actions: true,
             notify_in_app: true,
             notify_system: true,
+            backup_dir: "".into(),
+            backup_interval_days: 7,
         }
     }
 }

@@ -68,6 +68,14 @@ export interface AppSettings {
   extract_actions: boolean;
   notify_in_app: boolean;
   notify_system: boolean;
+  /** Folder for periodic markdown backups; empty = backups off. */
+  backup_dir: string;
+  backup_interval_days: number;
+}
+
+export interface BackupResult {
+  count: number;
+  path: string;
 }
 
 export type ActionStatus = "proposed" | "scheduled" | "done" | "dismissed";

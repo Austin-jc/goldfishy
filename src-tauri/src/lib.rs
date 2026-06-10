@@ -34,6 +34,7 @@ pub fn run() {
                 sweep_active: Arc::new(AtomicBool::new(false)),
                 current_activity: Arc::new(Mutex::new(None)),
                 last_trash_purge: Arc::new(AtomicI64::new(0)),
+                last_backup_check: Arc::new(AtomicI64::new(0)),
             });
             queue::spawn_worker(app.handle().clone());
             // Warm the embedder off the UI thread right away: the first-launch
@@ -98,6 +99,7 @@ pub fn run() {
             commands::save_image,
             commands::save_image_bytes,
             commands::export_notes,
+            commands::backup_now,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

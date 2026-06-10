@@ -956,8 +956,50 @@ fn iso(ms: i64) -> String {
 
 #[tauri::command]
 pub fn export_notes(app: AppHandle, dest: String, format: String) -> CmdResult<i64> {
+    export_notes_core(&app, PathBuf::from(dest), &format)
+}
+
+#[derive(Serialize, Clone)]
+pub struct BackupResult {
+    pub count: i64,
+    pub path: String,
+}
+
+/// Markdown backup into the configured folder (timestamped subdir);
+/// records `last_backup_at` so the worker knows when the next one is due.
+pub fn run_backup(app: &AppHandle) -> Result<BackupResult, String> {
+    let dir = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        db::load_settings(&db).backup_dir
+    };
+    if dir.trim().is_empty() {
+        return Err("No backup folder configured in Settings".into());
+    }
+    let stamp = chrono::Local::now().format("%Y-%m-%d_%H%M%S").to_string();
+    let dest = PathBuf::from(dir.trim()).join(format!("goldfishy-backup-{stamp}"));
+    let count = export_notes_core(app, dest.clone(), "markdown")?;
     let state = app.state::<AppState>();
-    let dest = PathBuf::from(dest);
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "INSERT INTO settings(key, value) VALUES ('last_backup_at', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![now_ms().to_string()],
+    )
+    .map_err(estr)?;
+    Ok(BackupResult {
+        count,
+        path: dest.display().to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn backup_now(app: AppHandle) -> CmdResult<BackupResult> {
+    run_backup(&app)
+}
+
+pub fn export_notes_core(app: &AppHandle, dest: PathBuf, format: &str) -> CmdResult<i64> {
+    let state = app.state::<AppState>();
     std::fs::create_dir_all(&dest).map_err(estr)?;
 
     let (folders, notes) = {

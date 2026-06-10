@@ -3,6 +3,7 @@ import type {
   ActionItem,
   ActionStatus,
   AppSettings,
+  BackupResult,
   CollectionSummary,
   Folder,
   Note,
@@ -112,4 +113,5 @@ export const api = {
     invoke<string>("save_image_bytes", { dataBase64, ext }),
   exportNotes: (dest: string, format: "markdown" | "json") =>
     invoke<number>("export_notes", { dest, format }),
+  backupNow: () => invoke<BackupResult>("backup_now"),
 };

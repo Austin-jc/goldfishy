@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{self, now_ms};
 use crate::embed;
-use crate::models::{ActionItem, QueueStatus};
+use crate::models::{ActionItem, AppSettings, QueueStatus};
 use crate::state::AppState;
 
 /// Spawn the background engine: a 1s tick loop that drains
@@ -150,6 +150,43 @@ fn purge_old_trash(app: &AppHandle) -> Result<()> {
     Ok(())
 }
 
+const BACKUP_CHECK_INTERVAL_MS: i64 = 30 * 60 * 1000;
+
+/// Run the periodic markdown backup when one is due (checked every ~30 min).
+fn maybe_backup(app: &AppHandle, settings: &AppSettings) {
+    if settings.backup_dir.trim().is_empty() || settings.backup_interval_days == 0 {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let now = now_ms();
+    let last_check = state.last_backup_check.load(Ordering::Relaxed);
+    if now - last_check < BACKUP_CHECK_INTERVAL_MS {
+        return;
+    }
+    state.last_backup_check.store(now, Ordering::Relaxed);
+    let last_backup: i64 = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT value FROM settings WHERE key = 'last_backup_at'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+    };
+    if now - last_backup < settings.backup_interval_days as i64 * 86_400_000 {
+        return;
+    }
+    match crate::commands::run_backup(app) {
+        Ok(res) => {
+            eprintln!("[backup] {} notes → {}", res.count, res.path);
+            let _ = app.emit("backup-done", &res);
+        }
+        Err(e) => eprintln!("[backup] {e}"),
+    }
+}
+
 async fn tick(app: &AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
     let settings = {
@@ -164,6 +201,7 @@ async fn tick(app: &AppHandle) -> Result<()> {
     if let Err(e) = purge_old_trash(app) {
         eprintln!("[trash] {e:#}");
     }
+    maybe_backup(app, &settings);
 
     let sweep = state.sweep_active.load(Ordering::Relaxed);
     let auto = settings.automation_mode == "auto";

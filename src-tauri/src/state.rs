@@ -54,4 +54,6 @@ pub struct AppState {
     pub current_activity: Arc<Mutex<Option<(String, Option<String>)>>>,
     /// Last time the 30-day trash purge ran (ms epoch).
     pub last_trash_purge: Arc<AtomicI64>,
+    /// Last time the worker checked whether a backup is due (ms epoch).
+    pub last_backup_check: Arc<AtomicI64>,
 }

@@ -29,7 +29,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 - [x] **Trash with restore** — soft delete (`deleted_at`); Trash section in the explorer with restore / delete-forever; auto-purge after 30 days; all queries (lists, search, FTS, queues, tags, action items, exports) exclude trashed notes.
 - [x] **Note version history** — snapshot title+content into `note_versions` whenever a significant change (per `diff.rs`) is about to overwrite it; keep last ~20; History popover in the editor with restore.
-- [ ] **Scheduled backup export** — optional backup folder + interval in Settings; worker runs the existing markdown export periodically.
+- [x] **Scheduled backup export** — optional backup folder + interval in Settings; worker runs the existing markdown export periodically.
 
 ## Desktop-native
 

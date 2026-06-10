@@ -42,6 +42,12 @@ export default function App() {
         void st.refreshActions();
         if (st.settings?.notify_in_app !== false) st.pushReminder(e.payload);
       }),
+      listen<{ count: number; path: string }>("backup-done", (e) => {
+        useStore.getState().toast(
+          `Backed up ${e.payload.count} notes to ${e.payload.path}`,
+          "success",
+        );
+      }),
     ];
     return () => {
       for (const p of unsubs) void p.then((u) => u());
