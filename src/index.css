@@ -490,6 +490,16 @@ mark {
   padding: 0 1px;
 }
 
+/* term highlights (search click-through + find-in-note), decoration-based */
+.ProseMirror .term-hit {
+  background: color-mix(in srgb, var(--color-clay-500) 30%, transparent);
+  border-radius: 2px;
+}
+.ProseMirror .term-hit-active {
+  background: color-mix(in srgb, var(--color-clay-500) 60%, transparent);
+  outline: 1px solid var(--color-clay-400);
+}
+
 /* AI results fade in silently (spec: no blocking modals) */
 @keyframes fade-slide-in {
   from {

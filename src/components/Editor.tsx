@@ -39,6 +39,7 @@ import {
 import { api } from "../api";
 import { useStore } from "../store";
 import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
+import { findTermRanges, TermHighlight } from "../editor/highlight";
 import { isImagePath, relativeTime } from "../utils";
 import type { Note } from "../types";
 
@@ -120,6 +121,7 @@ function EditorInner({ noteId }: { noteId: string }) {
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: "Start writing… markdown works." }),
       Markdown.configure({ html: false, linkify: true }),
+      TermHighlight,
     ],
     content: note.content,
     onUpdate: ({ editor }) => {
@@ -135,6 +137,28 @@ function EditorInner({ noteId }: { noteId: string }) {
       void saveNow();
     };
   }, [saveNow]);
+
+  // While a keyword search is active, highlight its terms in the open note
+  // and jump to the first hit — so a clicked result lands in context.
+  const searchQuery = useStore((s) => s.searchQuery);
+  const searchMode = useStore((s) => s.searchMode);
+  const searchActive = useStore((s) => s.searchResults !== null);
+  useEffect(() => {
+    if (!editor) return;
+    const terms =
+      searchActive && searchMode === "keyword"
+        ? searchQuery
+            .split(/\s+/)
+            .map((t) => t.replace(/^"+|"+$/g, ""))
+            .filter((t) => t.length >= 2)
+        : [];
+    editor.commands.setHighlightTerms(terms);
+    if (terms.length > 0) {
+      const first = findTermRanges(editor.state.doc, terms)[0];
+      // No focus() here — stealing focus from the search bar would be rude.
+      if (first) editor.chain().setTextSelection(first.from).scrollIntoView().run();
+    }
+  }, [editor, searchQuery, searchMode, searchActive]);
 
   // Drag & drop local images: copy into app storage, embed as relative path.
   // The Tauri event carries the pointer position (physical px), so the image
