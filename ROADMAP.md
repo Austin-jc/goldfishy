@@ -23,7 +23,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Task-list checkboxes** — Tiptap TaskList/TaskItem, round-trips `- [ ]` GFM markdown. (Later: sync checked state with action items.)
 - [ ] **Slash commands** — typing `/` at the start of a block opens an insert menu (headings, lists, task list, quote, code block, divider).
 - [x] **Paste images from clipboard** — ⌘V of image data saves through a `save_image_bytes` command and inserts like drag-drop.
-- [ ] **⌘F find-in-note** — floating find bar with match count, next/prev cycling, mark-style highlights (shares the search-highlight extension).
+- [x] **⌘F find-in-note** — floating find bar with match count, next/prev cycling, mark-style highlights (shares the search-highlight extension).
 
 ## Data safety
 

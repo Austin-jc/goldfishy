@@ -19,6 +19,7 @@ import {
   Bold,
   Check,
   ChevronDown,
+  ChevronUp,
   Code,
   FileText,
   Folder as FolderIcon,
@@ -34,6 +35,7 @@ import {
   PinOff,
   Plus,
   Quote,
+  Search,
   Sparkles,
   SquareCode,
   Strikethrough,
@@ -89,6 +91,7 @@ function EditorInner({ noteId }: { noteId: string }) {
   const [aiWorking, setAiWorking] = useState<"" | "bullets" | "organize" | "actions">("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
 
   const titleRef = useRef(note.title);
   const contentRef = useRef(note.content);
@@ -183,11 +186,12 @@ function EditorInner({ noteId }: { noteId: string }) {
 
   // While a keyword search is active, highlight its terms in the open note
   // and jump to the first hit — so a clicked result lands in context.
+  // The find bar owns the highlights while it's open.
   const searchQuery = useStore((s) => s.searchQuery);
   const searchMode = useStore((s) => s.searchMode);
   const searchActive = useStore((s) => s.searchResults !== null);
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || findOpen) return;
     const terms =
       searchActive && searchMode === "keyword"
         ? searchQuery
@@ -201,7 +205,19 @@ function EditorInner({ noteId }: { noteId: string }) {
       // No focus() here — stealing focus from the search bar would be rude.
       if (first) editor.chain().setTextSelection(first.from).scrollIntoView().run();
     }
-  }, [editor, searchQuery, searchMode, searchActive]);
+  }, [editor, searchQuery, searchMode, searchActive, findOpen]);
+
+  // ⌘F opens the in-note find bar.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   // Drag & drop local images: copy into app storage, embed as relative path.
   // The Tauri event carries the pointer position (physical px), so the image
@@ -301,7 +317,10 @@ function EditorInner({ noteId }: { noteId: string }) {
     "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50";
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
+    <main className="relative flex min-w-0 flex-1 flex-col">
+      {findOpen && editor && (
+        <FindBar editor={editor} onClose={() => setFindOpen(false)} />
+      )}
       {/* header — borderless, recedes behind the canvas */}
       <header className="flex items-center gap-2 px-5 pb-1 pt-3">
         <FolderPicker noteId={noteId} folderId={note.folder_id} />
@@ -510,6 +529,76 @@ function EditorInner({ noteId }: { noteId: string }) {
 
       {editor && <SelectionMenu editor={editor} />}
     </main>
+  );
+}
+
+/** Floating ⌘F find bar — highlights matches, Enter / Shift-Enter cycles. */
+function FindBar({ editor, onClose }: { editor: TiptapEditor; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const count = query ? findTermRanges(editor.state.doc, [query]).length : 0;
+
+  const apply = (q: string, idx: number) => {
+    editor.commands.setHighlightTerms(q ? [q] : [], idx);
+    const range = q ? findTermRanges(editor.state.doc, [q])[idx] : undefined;
+    if (range) editor.chain().setTextSelection(range.from).scrollIntoView().run();
+  };
+
+  const onChange = (q: string) => {
+    setQuery(q);
+    setActive(0);
+    apply(q, 0);
+  };
+
+  const step = (dir: 1 | -1) => {
+    if (count === 0) return;
+    const idx = (active + dir + count) % count;
+    setActive(idx);
+    apply(query, idx);
+  };
+
+  return (
+    <div className="absolute right-6 top-2 z-30 flex items-center gap-1 rounded-xl border border-stone-800 bg-stone-900 px-2 py-1.5 shadow-2xl shadow-black/50">
+      <Search size={12} className="shrink-0 text-stone-500" />
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            step(e.shiftKey ? -1 : 1);
+          }
+          if (e.key === "Escape") onClose();
+        }}
+        placeholder="Find in note…"
+        className="w-40 bg-transparent text-xs text-stone-200 outline-none placeholder:text-stone-600"
+      />
+      <span className="min-w-10 text-right text-[10px] tabular-nums text-stone-500">
+        {query ? (count > 0 ? `${active + 1}/${count}` : "0/0") : ""}
+      </span>
+      <button
+        onClick={() => step(-1)}
+        title="Previous match (⇧↵)"
+        className="cursor-pointer rounded p-1 text-stone-500 hover:bg-stone-800 hover:text-stone-200"
+      >
+        <ChevronUp size={12} />
+      </button>
+      <button
+        onClick={() => step(1)}
+        title="Next match (↵)"
+        className="cursor-pointer rounded p-1 text-stone-500 hover:bg-stone-800 hover:text-stone-200"
+      >
+        <ChevronDown size={12} />
+      </button>
+      <button
+        onClick={onClose}
+        title="Close (esc)"
+        className="cursor-pointer rounded p-1 text-stone-500 hover:bg-stone-800 hover:text-stone-200"
+      >
+        <X size={12} />
+      </button>
+    </div>
   );
 }
 
