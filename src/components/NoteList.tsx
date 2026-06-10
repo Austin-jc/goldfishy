@@ -134,7 +134,7 @@ export function SummaryBar() {
   const [open, setOpen] = useState(false);
 
   const kind = view.kind;
-  const key = view.key ?? "";
+  const key = kind === "tag" ? (view.tags?.[0] ?? "") : (view.key ?? "");
 
   useEffect(() => {
     setSummary(null);
@@ -149,6 +149,8 @@ export function SummaryBar() {
   }, [kind, key]);
 
   if (settings?.llm_backend === "none") return null;
+  // A summary of a multi-tag intersection would be misleading — single views only.
+  if (kind === "tag" && (view.tags?.length ?? 0) !== 1) return null;
 
   const generate = async () => {
     setWorking(true);

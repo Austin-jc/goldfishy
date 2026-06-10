@@ -54,7 +54,7 @@ Click the trash can at the top right of the note. It asks you to **click twice**
 
 - **Folders** work like folders anywhere else. Hover over **Folders** in the sidebar and click **+** to make one. Hover over a folder's name for buttons to rename it, delete it, or add a folder inside it.
 - To **move a note** into a folder, open the note and use the folder dropdown at the top left of the editor.
-- **Tags** are little labels (like `recipes` or `work`). Under the note's title, click **+ tag** to add one. Click a tag in the sidebar to see every note with that label.
+- **Tags** are little labels (like `recipes` or `work`). Under the note's title, click **+ tag** to add one. Click a tag in the sidebar to filter to notes with that label — click more tags to narrow further (notes must have *all* selected tags), and click a selected tag again to deselect it.
 
 You can use folders, tags, both, or neither — the search is good enough that many people barely organize at all.
 
@@ -156,6 +156,7 @@ If you'd rather not install Ollama, GoldFishy can run models directly, but this 
 - **Automation mode**
   - *Full Auto* (recommended) — tags and suggestions happen by themselves in the background.
   - *Manual Only* — the AI only runs when you click the **Organize** or **Auto-bullet** buttons. Choose this if you're on battery a lot or just prefer to be in control.
+- **Auto-tag granularity** — how many tags the AI may put on a note: Off, Minimal (1), Balanced (2), or Detailed (4). If your tag list is getting noisy, turn this down — the AI is also told to reuse your existing tags rather than invent near-duplicates.
 - **Embedding debounce** — how many seconds after you stop typing before the app updates its search index for that note. Leave it at 2 unless you have a reason.
 - **LLM debounce** — how many seconds of quiet before the heavier AI (tagging) kicks in. Leave at 5.
 - **Sync / Re-index** — if you spent a while in Manual mode and want the AI to catch up on everything it skipped, click **Re-index now** and let it churn through the backlog.

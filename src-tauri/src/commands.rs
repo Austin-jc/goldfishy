@@ -173,10 +173,14 @@ pub fn dismiss_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<N
 }
 
 #[tauri::command]
-pub fn list_notes(app: AppHandle, folder_id: Option<String>, tag: Option<String>) -> CmdResult<Vec<Note>> {
+pub fn list_notes(
+    app: AppHandle,
+    folder_id: Option<String>,
+    tags: Option<Vec<String>>,
+) -> CmdResult<Vec<Note>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    db::list_notes(&db, folder_id.as_deref(), tag.as_deref()).map_err(eanyhow)
+    db::list_notes(&db, folder_id.as_deref(), tags.as_deref()).map_err(eanyhow)
 }
 
 // ---------------------------------------------------------------- search

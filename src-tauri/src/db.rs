@@ -185,8 +185,13 @@ pub fn get_note(conn: &Connection, id: &str) -> Result<Note> {
     Ok(note)
 }
 
-pub fn list_notes(conn: &Connection, folder_id: Option<&str>, tag: Option<&str>) -> Result<Vec<Note>> {
-    let mut notes: Vec<Note> = match (folder_id, tag) {
+pub fn list_notes(
+    conn: &Connection,
+    folder_id: Option<&str>,
+    tags: Option<&[String]>,
+) -> Result<Vec<Note>> {
+    let tags = tags.unwrap_or(&[]);
+    let mut notes: Vec<Note> = match (folder_id, tags.is_empty()) {
         (Some(f), _) => {
             let mut stmt = conn.prepare(&format!(
                 "SELECT {NOTE_COLS} FROM notes WHERE folder_id = ?1 ORDER BY updated_at DESC"
@@ -194,14 +199,20 @@ pub fn list_notes(conn: &Connection, folder_id: Option<&str>, tag: Option<&str>)
             let rows = stmt.query_map(params![f], row_to_note)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         }
-        (None, Some(t)) => {
+        (None, false) => {
+            // Notes carrying ALL of the selected tags.
+            let placeholders = vec!["?"; tags.len()].join(",");
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes WHERE id IN (SELECT note_id FROM note_tags WHERE tag = ?1) ORDER BY updated_at DESC"
+                "SELECT {NOTE_COLS} FROM notes WHERE id IN (
+                    SELECT note_id FROM note_tags WHERE tag IN ({placeholders})
+                    GROUP BY note_id HAVING COUNT(DISTINCT tag) = {}
+                 ) ORDER BY updated_at DESC",
+                tags.len()
             ))?;
-            let rows = stmt.query_map(params![t], row_to_note)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(tags.iter()), row_to_note)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         }
-        (None, None) => {
+        (None, true) => {
             let mut stmt = conn.prepare(&format!(
                 "SELECT {NOTE_COLS} FROM notes ORDER BY updated_at DESC"
             ))?;

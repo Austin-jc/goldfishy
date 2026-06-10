@@ -15,8 +15,11 @@ import { common, createLowlight } from "lowlight";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Bold,
+  Check,
+  ChevronDown,
   Code,
   FileText,
+  Folder as FolderIcon,
   Heading1,
   Heading2,
   Italic,
@@ -202,22 +205,7 @@ function EditorInner({ noteId }: { noteId: string }) {
     <main className="flex min-w-0 flex-1 flex-col">
       {/* header — borderless, recedes behind the canvas */}
       <header className="flex items-center gap-2 px-5 pb-1 pt-3">
-        <select
-          value={note.folder_id ?? ""}
-          onChange={async (e) => {
-            const updated = await api.moveNote(noteId, e.target.value || null);
-            useStore.getState().applyNoteUpdate(updated);
-            void useStore.getState().refreshNotes();
-          }}
-          className="max-w-44 cursor-pointer rounded-lg bg-transparent px-2 py-1 text-xs text-stone-400 outline-none transition-colors hover:bg-stone-900 hover:text-stone-200"
-        >
-          <option value="">No folder</option>
-          {folderOptions(folders).map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <FolderPicker noteId={noteId} folderId={note.folder_id} />
 
         <span className="text-[10px] text-stone-600">edited {relativeTime(note.updated_at)}</span>
 
@@ -408,6 +396,88 @@ function EditorInner({ noteId }: { noteId: string }) {
 
       {editor && <SelectionMenu editor={editor} />}
     </main>
+  );
+}
+
+/** Shows where the note is filed; click to move it to another folder. */
+function FolderPicker({ noteId, folderId }: { noteId: string; folderId: string | null }) {
+  const folders = useStore((s) => s.folders);
+  const [open, setOpen] = useState(false);
+  const current = folderId ? folders.find((f) => f.id === folderId) : null;
+
+  const move = async (target: string | null) => {
+    setOpen(false);
+    if (target === folderId) return;
+    try {
+      const updated = await api.moveNote(noteId, target);
+      useStore.getState().applyNoteUpdate(updated);
+      void useStore.getState().refreshNotes();
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        title="Where this note is filed — click to move it"
+        className="flex max-w-52 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200"
+      >
+        <FolderIcon size={12} className={current ? "text-clay-400" : "text-stone-500"} />
+        <span className="truncate">{current ? current.name : "No folder"}</span>
+        <ChevronDown size={11} className="shrink-0 text-stone-600" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/40">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+              Move note to
+            </p>
+            <FolderMenuItem active={!current} onClick={() => void move(null)}>
+              No folder
+            </FolderMenuItem>
+            {folderOptions(folders).map((o) => (
+              <FolderMenuItem
+                key={o.id}
+                active={folderId === o.id}
+                onClick={() => void move(o.id)}
+              >
+                {o.label}
+              </FolderMenuItem>
+            ))}
+            {folders.length === 0 && (
+              <p className="px-2.5 py-2 text-[11px] text-stone-600">
+                No folders yet — create one in the sidebar.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FolderMenuItem({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full cursor-pointer items-center gap-1.5 whitespace-pre rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
+        active ? "bg-clay-600/15 text-clay-300" : "text-stone-300 hover:bg-stone-800/70"
+      }`}
+    >
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {active && <Check size={11} className="shrink-0" />}
+    </button>
   );
 }
 

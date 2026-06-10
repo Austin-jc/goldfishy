@@ -51,14 +51,24 @@ export default function SettingsModal() {
     }
   };
 
+  const [llmStatus, setLlmStatus] = useState<{ ok: boolean; detail: string } | null>(null);
+
+  const connectionLabel = (s: AppSettings) =>
+    s.llm_backend === "external"
+      ? `${s.external_model.trim() || "default"} @ ${s.external_url.trim() || "?"}`
+      : s.llm_backend === "sidecar"
+        ? `${s.model_path.split("/").pop() || "local model"} via llama-server`
+        : "disabled";
+
   const testConnection = async () => {
     if (!(await save())) return;
     setTesting(true);
+    setLlmStatus(null);
     try {
-      const reply = await api.testLlm();
-      useStore.getState().toast(`LLM replied: ${reply.slice(0, 80)}`, "success");
+      await api.testLlm();
+      setLlmStatus({ ok: true, detail: `Connected · ${connectionLabel(local)}` });
     } catch (e) {
-      useStore.getState().toast(String(e), "error");
+      setLlmStatus({ ok: false, detail: String(e) });
     } finally {
       setTesting(false);
     }
@@ -140,9 +150,15 @@ export default function SettingsModal() {
 
           {/* ---------------- AI Engine (BYOM) ---------------- */}
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-stone-500">
               AI Engine &amp; Model Selection
             </h3>
+            <p className="mb-2 text-[10px] text-stone-500">
+              Active:{" "}
+              <span className={settings.llm_backend === "none" ? "" : "text-sage-400"}>
+                {settings.llm_backend === "none" ? "AI disabled" : connectionLabel(settings)}
+              </span>
+            </p>
             <div className="flex gap-2">
               {(
                 [
@@ -273,10 +289,28 @@ export default function SettingsModal() {
             )}
 
             {local.llm_backend !== "none" && (
-              <button onClick={() => void testConnection()} disabled={testing} className={btnCls + " mt-2"}>
-                {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                Test connection
-              </button>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button onClick={() => void testConnection()} disabled={testing} className={btnCls}>
+                  {testing ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                  Test connection
+                </button>
+                {llmStatus && (
+                  <span
+                    className={`fade-in flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] ${
+                      llmStatus.ok
+                        ? "bg-sage-900 text-sage-300"
+                        : "bg-red-950 text-red-300"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        llmStatus.ok ? "bg-sage-400" : "bg-red-400"
+                      }`}
+                    />
+                    <span className="max-w-80 truncate">{llmStatus.detail}</span>
+                  </span>
+                )}
+              </div>
             )}
           </section>
 
@@ -305,6 +339,36 @@ export default function SettingsModal() {
                       onClick={() => set("automation_mode", value)}
                       className={`px-3 py-1 text-xs ${
                         local.automation_mode === value
+                          ? "bg-clay-600 text-white"
+                          : "text-stone-400 hover:bg-stone-800"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-stone-200">Auto-tag granularity</p>
+                  <p className="text-[10px] text-stone-500">
+                    How many tags the AI may add per note. Fewer keeps tags meaningful.
+                  </p>
+                </div>
+                <div className="flex overflow-hidden rounded-md border border-stone-700">
+                  {(
+                    [
+                      [0, "Off"],
+                      [1, "Minimal"],
+                      [2, "Balanced"],
+                      [4, "Detailed"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => set("auto_tag_max", value)}
+                      className={`cursor-pointer px-3 py-1 text-xs transition-colors ${
+                        local.auto_tag_max === value
                           ? "bg-clay-600 text-white"
                           : "text-stone-400 hover:bg-stone-800"
                       }`}

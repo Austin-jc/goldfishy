@@ -55,6 +55,7 @@ export interface AppSettings {
   model_path: string;
   sidecar_port: number;
   hf_repo: string;
+  auto_tag_max: number;
   extract_actions: boolean;
   notify_in_app: boolean;
   notify_system: boolean;
@@ -84,7 +85,10 @@ export type SearchMode = "keyword" | "semantic";
 
 export interface View {
   kind: "all" | "folder" | "tag";
+  /** Folder id when kind === "folder". */
   key: string | null;
+  /** Selected tags when kind === "tag" — notes must carry all of them. */
+  tags?: string[];
 }
 
 export interface DownloadProgress {

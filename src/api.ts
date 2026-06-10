@@ -29,8 +29,8 @@ export function resolveImageSrc(src: string): string {
 
 export const api = {
   // notes
-  listNotes: (folderId: string | null, tag: string | null) =>
-    invoke<Note[]>("list_notes", { folderId, tag }),
+  listNotes: (folderId: string | null, tags: string[] | null) =>
+    invoke<Note[]>("list_notes", { folderId, tags }),
   getNote: (id: string) => invoke<Note>("get_note", { id }),
   createNote: (folderId: string | null) => invoke<Note>("create_note", { folderId }),
   updateNote: (id: string, title: string, content: string) =>

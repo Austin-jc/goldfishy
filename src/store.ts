@@ -112,7 +112,7 @@ export const useStore = create<Store>((set, get) => ({
     const { view } = get();
     const notes = await api.listNotes(
       view.kind === "folder" ? view.key : null,
-      view.kind === "tag" ? view.key : null,
+      view.kind === "tag" ? (view.tags ?? []) : null,
     );
     set({ notes });
   },

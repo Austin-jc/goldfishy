@@ -237,27 +237,48 @@ pub async fn chat(
 /// Queue 2 task: suggest 3 tags and a destination folder for a note.
 pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> {
     let state = app.state::<AppState>();
-    let (input, title, content, folders) = {
+    let (input, title, content, folders, existing_tags, max_tags) = {
         let db = state.db.lock().unwrap();
         let note = db::get_note(&db, note_id)?;
         let folders = db::list_folders(&db)?;
+        let existing_tags: Vec<String> = db::list_tags(&db)?
+            .into_iter()
+            .take(40)
+            .map(|t| t.tag)
+            .collect();
+        let settings = db::load_settings(&db);
         (
             db::ai_input(&note.title, &note.content),
             note.title,
             note.content,
             folders,
+            existing_tags,
+            settings.auto_tag_max.min(5) as usize,
         )
     };
 
     let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
     let folders_json = serde_json::to_string(&folder_names)?;
+    let tags_json = serde_json::to_string(&existing_tags)?;
     let system = "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.";
+    let tag_instructions = if max_tags == 0 {
+        "Return an empty tags list.".to_string()
+    } else {
+        format!(
+            "Suggest at most {max_tags} short lowercase topical tags (1-2 words each) — fewer is \
+             better, and an empty list is fine if nothing fits strongly. Tags must name the note's \
+             topic or domain (e.g. \"rust\", \"recipes\", \"travel\"). Reuse a tag from this \
+             existing vocabulary whenever one fits: {tags_json}. Never use status or filler words \
+             (done, todo, wip, note, notes, text, misc, stuff, idea, random), bare verbs, or words \
+             that merely appear in the note without describing it."
+        )
+    };
     let user = format!(
-        "Suggest exactly 3 short lowercase topical tags (1-2 words each) for the note below, \
-         and choose the single best destination folder for it from this list: {folders_json}. \
-         Use null for the folder if none fits well or the list is empty.\n\n\
+        "{tag_instructions}\n\
+         Also choose the single best destination folder for the note from this list: \
+         {folders_json}. Use null for the folder if none fits well or the list is empty.\n\n\
          NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
-         Reply with JSON exactly like: {{\"tags\": [\"tag1\", \"tag2\", \"tag3\"], \"folder\": \"folder name or null\"}}",
+         Reply with JSON exactly like: {{\"tags\": [\"tag1\"], \"folder\": \"folder name or null\"}}",
         truncate_chars(&title, 200),
         truncate_chars(&content, 6000),
     );
@@ -286,14 +307,18 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
 
+    const TAG_STOPWORDS: [&str; 12] = [
+        "done", "todo", "wip", "note", "notes", "text", "misc", "stuff", "idea", "ideas",
+        "random", "general",
+    ];
     let tags: Vec<String> = parsed["tags"]
         .as_array()
         .map(|a| {
             a.iter()
                 .filter_map(|v| v.as_str())
                 .map(normalize_tag)
-                .filter(|t| !t.is_empty())
-                .take(3)
+                .filter(|t| !t.is_empty() && !TAG_STOPWORDS.contains(&t.as_str()))
+                .take(max_tags)
                 .collect()
         })
         .unwrap_or_default();
@@ -549,7 +574,10 @@ pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Res
                 }
                 all
             }
-            "tag" => db::list_notes(&db, None, Some(key))?,
+            "tag" => {
+                let tags = vec![key.to_string()];
+                db::list_notes(&db, None, Some(&tags))?
+            }
             _ => db::list_notes(&db, None, None)?,
         }
     };

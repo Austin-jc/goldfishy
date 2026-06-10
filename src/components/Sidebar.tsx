@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -68,12 +69,23 @@ export default function Sidebar() {
     (queue?.embed_pending ?? 0) + (queue?.llm_pending ?? 0) > 0 || queue?.sweep_active;
 
   const shown = searchResults ?? notes;
+  const selectedTags = view.kind === "tag" ? (view.tags ?? []) : [];
   const viewName =
     view.kind === "all"
       ? "All Notes"
       : view.kind === "tag"
-        ? `#${view.key}`
+        ? selectedTags.map((t) => `#${t}`).join(" ")
         : (folders.find((f) => f.id === view.key)?.name ?? "Folder");
+
+  // Click to toggle: add to the selection, click again to remove.
+  const toggleTag = (tag: string) => {
+    const next = selectedTags.includes(tag)
+      ? selectedTags.filter((t) => t !== tag)
+      : [...selectedTags, tag];
+    selectView(
+      next.length > 0 ? { kind: "tag", key: null, tags: next } : { kind: "all", key: null },
+    );
+  };
 
   if (collapsed) {
     return (
@@ -94,8 +106,9 @@ export default function Sidebar() {
     >
       {/* header */}
       <div className="flex items-center gap-2 px-4 pb-3 pt-4">
-        <GoldfishLogo size={22} />
-        <span className="text-sm font-semibold text-stone-100">GoldFishy</span>
+        <span title="GoldFishy" className="flex items-center">
+          <GoldfishLogo size={26} />
+        </span>
         {busy && (
           <span
             className="pulse-dot h-2 w-2 rounded-full bg-clay-400"
@@ -201,21 +214,26 @@ export default function Sidebar() {
           </div>
           {tagsOpen && (
             <div className="mt-0.5">
-              {tags.map((t) => (
-                <button
-                  key={t.tag}
-                  onClick={() => selectView({ kind: "tag", key: t.tag })}
-                  className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors ${
-                    view.kind === "tag" && view.key === t.tag
-                      ? "bg-clay-600/15 text-clay-300"
-                      : "text-stone-400 hover:bg-stone-800/60"
-                  }`}
-                >
-                  <Tag size={13} className="shrink-0" />
-                  <span className="truncate">{t.tag}</span>
-                  <span className="ml-auto text-[10px] text-stone-600">{t.count}</span>
-                </button>
-              ))}
+              {tags.map((t) => {
+                const active = selectedTags.includes(t.tag);
+                return (
+                  <button
+                    key={t.tag}
+                    onClick={() => toggleTag(t.tag)}
+                    title={active ? "Remove from filter" : "Add to filter (combines with other selected tags)"}
+                    className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors ${
+                      active
+                        ? "bg-clay-600/15 text-clay-300"
+                        : "text-stone-400 hover:bg-stone-800/60"
+                    }`}
+                  >
+                    <Tag size={13} className="shrink-0" />
+                    <span className="truncate">{t.tag}</span>
+                    {active && <Check size={12} className="shrink-0" />}
+                    <span className="ml-auto text-[10px] text-stone-600">{t.count}</span>
+                  </button>
+                );
+              })}
               {tags.length === 0 && (
                 <p className="px-2.5 py-1 text-xs text-stone-600">No tags yet</p>
               )}

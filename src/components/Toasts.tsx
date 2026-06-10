@@ -1,9 +1,10 @@
 import { useStore } from "../store";
 
+// Theme-variable driven so toasts stay readable in light and dark themes.
 const colors: Record<string, string> = {
-  info: "border-stone-800 bg-stone-900",
-  success: "border-emerald-800 bg-emerald-950",
-  error: "border-red-900 bg-red-950",
+  info: "border-stone-800 bg-stone-900 text-stone-200",
+  success: "border-sage-700/50 bg-sage-900 text-stone-200",
+  error: "border-red-900 bg-red-950 text-red-100",
 };
 
 export default function Toasts() {
@@ -16,7 +17,7 @@ export default function Toasts() {
         <button
           key={t.id}
           onClick={() => dismiss(t.id)}
-          className={`fade-in rounded-lg border px-3 py-2 text-left text-xs text-stone-200 shadow-lg ${colors[t.kind]}`}
+          className={`fade-in rounded-lg border px-3 py-2 text-left text-xs shadow-lg ${colors[t.kind]}`}
         >
           {t.text}
         </button>
