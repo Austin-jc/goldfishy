@@ -52,6 +52,7 @@ pub fn run() {
             commands::update_note,
             commands::delete_note,
             commands::move_note,
+            commands::set_note_pinned,
             commands::add_tag,
             commands::remove_tag,
             commands::accept_folder_suggestion,

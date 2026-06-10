@@ -38,6 +38,8 @@ export const api = {
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),
   moveNote: (id: string, folderId: string | null) =>
     invoke<Note>("move_note", { id, folderId }),
+  setNotePinned: (id: string, pinned: boolean) =>
+    invoke<Note>("set_note_pinned", { id, pinned }),
   addTag: (noteId: string, tag: string) => invoke<Note>("add_tag", { noteId, tag }),
   removeTag: (noteId: string, tag: string) => invoke<Note>("remove_tag", { noteId, tag }),
   acceptFolderSuggestion: (noteId: string) =>

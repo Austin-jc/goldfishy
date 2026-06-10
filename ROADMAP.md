@@ -16,7 +16,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 - [x] **Drag notes between folders** — HTML5 drag in the tree; drop on a folder moves the note, drop on "All Notes" unfiles it. Folders draggable too (new `move_folder` command, cycle-safe).
 - [ ] **Right-click context menus** — context menu on note rows (open, duplicate, pin, delete) and folder rows (new note, new subfolder, rename, delete); complements the cramped hover icons.
-- [ ] **Pinned notes** — `pinned` column; pinned section at the top of the explorer; toggle via context menu / editor.
+- [x] **Pinned notes** — `pinned` column; pinned section at the top of the explorer; toggle via context menu / editor.
 
 ## Editor
 

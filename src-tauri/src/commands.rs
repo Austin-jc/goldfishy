@@ -119,6 +119,18 @@ pub fn move_note(app: AppHandle, id: String, folder_id: Option<String>) -> CmdRe
 }
 
 #[tauri::command]
+pub fn set_note_pinned(app: AppHandle, id: String, pinned: bool) -> CmdResult<Note> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE notes SET pinned = ?1 WHERE id = ?2",
+        params![pinned, id],
+    )
+    .map_err(estr)?;
+    db::get_note(&db, &id).map_err(eanyhow)
+}
+
+#[tauri::command]
 pub fn add_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> {
     let tag = tag.trim().to_lowercase().replace(char::is_whitespace, "-");
     if tag.is_empty() {

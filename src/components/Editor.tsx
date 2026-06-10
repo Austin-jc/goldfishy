@@ -27,6 +27,8 @@ import {
   ListChecks,
   ListOrdered,
   Loader2,
+  Pin,
+  PinOff,
   Plus,
   Quote,
   Sparkles,
@@ -309,6 +311,20 @@ function EditorInner({ noteId }: { noteId: string }) {
               </button>
             </>
           )}
+          <button
+            onClick={async () => {
+              try {
+                const updated = await api.setNotePinned(noteId, !note.pinned);
+                useStore.getState().applyNoteUpdate(updated);
+              } catch (e) {
+                useStore.getState().toast(String(e), "error");
+              }
+            }}
+            title={note.pinned ? "Unpin note" : "Pin note to the top of the sidebar"}
+            className={ghostBtn + (note.pinned ? " text-clay-400" : "")}
+          >
+            {note.pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
           <button
             onClick={() => {
               if (!confirmDelete) {

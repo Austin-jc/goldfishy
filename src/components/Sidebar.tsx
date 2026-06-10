@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Pin,
   Plus,
   Settings,
   Sparkles,
@@ -215,6 +216,7 @@ export default function Sidebar() {
 
   const roots = ctx.childrenOf.get(null) ?? [];
   const unfiled = ctx.notesByFolder.get(null) ?? [];
+  const pinnedNotes = useMemo(() => notes.filter((n) => n.pinned), [notes]);
 
   const busy =
     (queue?.embed_pending ?? 0) + (queue?.llm_pending ?? 0) > 0 || queue?.sweep_active;
@@ -408,6 +410,21 @@ export default function Sidebar() {
                     : `Auto-title ${untitledCount} untitled note${untitledCount === 1 ? "" : "s"}`}
                 </button>
               )}
+
+            {/* pinned shortcuts — notes also stay in their tree position */}
+            {pinnedNotes.length > 0 && (
+              <>
+                <p className="mt-2 flex items-center gap-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                  <Pin size={10} />
+                  Pinned
+                </p>
+                <div className="mt-0.5">
+                  {pinnedNotes.map((n) => (
+                    <TreeNoteRow key={`pin-${n.id}`} note={n} depth={0} />
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* file explorer — folders with their notes nested inside */}
             <div className="mt-1">
@@ -816,6 +833,7 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
         <FileText size={12} className="shrink-0 text-stone-600" />
         <span className="truncate">{note.title || "Untitled"}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
+          {note.pinned && <Pin size={9} className="text-stone-600" />}
           {note.llm_status === "PENDING" ? (
             <span title="AI working on this note…" className="flex">
               <Loader2 size={11} className="animate-spin text-sage-400" />

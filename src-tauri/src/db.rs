@@ -111,6 +111,11 @@ fn migrate(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_actions_note ON action_items(note_id);
         "#,
     )?;
+    // Additive column migrations — "duplicate column name" on re-run is fine.
+    let _ = conn.execute(
+        "ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(())
 }
 
@@ -119,7 +124,7 @@ pub fn ai_input(title: &str, content: &str) -> String {
     format!("{}\n\n{}", title, content)
 }
 
-const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL)";
+const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned";
 
 fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
     Ok(Note {
@@ -133,6 +138,7 @@ fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
         llm_status: row.get(7)?,
         suggested_folder_id: row.get(8)?,
         has_embedding: row.get(9)?,
+        pinned: row.get(10)?,
         tags: Vec::new(),
         score: None,
         snippet: None,

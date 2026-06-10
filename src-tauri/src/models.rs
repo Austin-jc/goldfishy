@@ -19,6 +19,7 @@ pub struct Note {
     pub llm_status: String,       // CLEAN | PENDING | STALE
     pub suggested_folder_id: Option<String>,
     pub has_embedding: bool,
+    pub pinned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

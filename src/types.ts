@@ -17,6 +17,7 @@ export interface Note {
   llm_status: PipelineStatus;
   suggested_folder_id: string | null;
   has_embedding: boolean;
+  pinned: boolean;
   score?: number;
   snippet?: string;
 }
