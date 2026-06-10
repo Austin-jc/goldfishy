@@ -76,7 +76,19 @@ UI conventions: no borders between regions — tone shifts + whitespace; popover
 
 ## Data & invariants
 
-DB: `~/Library/Application Support/com.nexusnote.app/nexusnote.db` (WAL). Migration = `execute_batch` of `IF NOT EXISTS` — **additive only**; for column changes you'd need real versioned migrations.
+DB: `~/Library/Application Support/com.nexusnote.app/nexusnote.db` (WAL). Migration = `execute_batch` of `IF NOT EXISTS` + ignored `ALTER TABLE ADD COLUMN`s (`pinned`, `deleted_at`) — **additive only**; for column changes you'd need real versioned migrations.
+
+**⚠ Trash invariant**: `delete_note` is a soft delete (`deleted_at`). **Every query that reads notes must filter `deleted_at IS NULL`** — lists, FTS + semantic search, related/similar notes, tag counts, action-item joins, worker queue picks, status counts, exports, bulk auto-title. Forgetting the filter resurrects trashed notes. Trash is purged after 30 days (worker, every ~6h). `merge_notes` soft-deletes its sources and re-links their action items + tags to the target.
+
+**Versions**: `note_versions` (cap 20/note, cascade delete). Snapshots: pre-edit state at most every 10 min (`maybe_snapshot_note`), and unconditionally before AI rewrites (bulletify, merge) and restores. Restore = `restore_note_version` (snapshots current first).
+
+**Backups**: `backup_dir` + `backup_interval_days` settings; worker checks every ~30 min against settings-table key `last_backup_at`, exports a timestamped markdown folder, emits `backup-done`.
+
+**Quick capture**: second webview window, label `capture` (must stay in `capabilities/default.json` windows list); `main.tsx` routes by label. Global shortcut ⌘⇧N registered Rust-side (`tauri-plugin-global-shortcut`). Saving emits `note-captured` (App listens, toasts with Open).
+
+**Per-feature AI toggles** in `AppSettings`: `auto_tag_max` (0=off), `auto_title`, `suggest_folders`, `extract_actions` — gate the worker pipeline and manual Organize; explicit actions (bulk auto-title, merge) stay available whenever an LLM backend is configured.
+
+Editor extras: TaskList/TaskItem (GFM `- [ ]`), `SlashCommands` ("/" insert menu, plain-DOM dropdown via @tiptap/suggestion), `TermHighlight` decorations (search click-through + ⌘F find bar), clipboard image paste (`save_image_bytes`, base64). Sidebar: pinned section, drag-drop note/folder moves (`move_folder` refuses cycles), right-click ContextMenu, Trash section, "Tidy up similar notes" (`find_similar_notes` union-find ≥0.80 cosine + `merge_notes`).
 
 **Do not rename** the bundle `identifier` (`com.nexusnote.app`) or the db filename — either would orphan users' data. Rebrand was deliberately limited to `productName`, window title, and UI text.
 
