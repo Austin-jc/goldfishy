@@ -109,6 +109,15 @@ fn migrate(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_actions_status ON action_items(status);
         CREATE INDEX IF NOT EXISTS idx_actions_due ON action_items(due_at);
         CREATE INDEX IF NOT EXISTS idx_actions_note ON action_items(note_id);
+
+        CREATE TABLE IF NOT EXISTS note_versions (
+            id TEXT PRIMARY KEY,
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_versions_note ON note_versions(note_id, created_at);
         "#,
     )?;
     // Additive column migrations — "duplicate column name" on re-run is fine.
@@ -346,6 +355,53 @@ pub fn get_action_item(conn: &Connection, id: &str) -> Result<ActionItem> {
         params![id],
         row_to_action,
     )?)
+}
+
+// ------------------------------------------------------------- note versions
+
+const MAX_VERSIONS_PER_NOTE: i64 = 20;
+/// Don't snapshot more often than this — autosave fires every 600ms.
+const VERSION_MIN_GAP_MS: i64 = 10 * 60 * 1000;
+
+/// Unconditionally store a version snapshot (and trim to the cap).
+pub fn snapshot_note(conn: &Connection, note_id: &str, title: &str, content: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO note_versions(id, note_id, title, content, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![uuid::Uuid::new_v4().to_string(), note_id, title, content, now_ms()],
+    )?;
+    conn.execute(
+        "DELETE FROM note_versions WHERE note_id = ?1 AND id NOT IN (
+            SELECT id FROM note_versions WHERE note_id = ?1
+            ORDER BY created_at DESC LIMIT ?2
+         )",
+        params![note_id, MAX_VERSIONS_PER_NOTE],
+    )?;
+    Ok(())
+}
+
+/// Snapshot the pre-edit state, but at most once per gap window, so the
+/// history reads as meaningful checkpoints instead of keystroke noise.
+pub fn maybe_snapshot_note(
+    conn: &Connection,
+    note_id: &str,
+    title: &str,
+    content: &str,
+) -> Result<()> {
+    if title.trim().is_empty() && content.trim().is_empty() {
+        return Ok(());
+    }
+    let latest: Option<i64> = conn
+        .query_row(
+            "SELECT MAX(created_at) FROM note_versions WHERE note_id = ?1",
+            params![note_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(None);
+    if latest.is_none_or(|t| now_ms() - t > VERSION_MIN_GAP_MS) {
+        snapshot_note(conn, note_id, title, content)?;
+    }
+    Ok(())
 }
 
 pub fn load_settings(conn: &Connection) -> AppSettings {

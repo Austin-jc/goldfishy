@@ -6,6 +6,7 @@ import type {
   CollectionSummary,
   Folder,
   Note,
+  NoteVersionMeta,
   QueueStatus,
   SearchMode,
   TagCount,
@@ -46,6 +47,10 @@ export const api = {
     invoke<Note>("set_note_pinned", { id, pinned }),
   addTag: (noteId: string, tag: string) => invoke<Note>("add_tag", { noteId, tag }),
   removeTag: (noteId: string, tag: string) => invoke<Note>("remove_tag", { noteId, tag }),
+  listNoteVersions: (noteId: string) =>
+    invoke<NoteVersionMeta[]>("list_note_versions", { noteId }),
+  restoreNoteVersion: (versionId: string) =>
+    invoke<Note>("restore_note_version", { versionId }),
   acceptFolderSuggestion: (noteId: string) =>
     invoke<Note>("accept_folder_suggestion", { noteId }),
   dismissFolderSuggestion: (noteId: string) =>

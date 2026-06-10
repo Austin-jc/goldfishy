@@ -25,6 +25,7 @@ import {
   Folder as FolderIcon,
   Heading1,
   Heading2,
+  History,
   Italic,
   List,
   ListChecks,
@@ -49,7 +50,7 @@ import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { findTermRanges, TermHighlight } from "../editor/highlight";
 import { SlashCommands } from "../editor/slash";
 import { isImagePath, relativeTime } from "../utils";
-import type { Note } from "../types";
+import type { Note, NoteVersionMeta } from "../types";
 
 const lowlight = createLowlight(common);
 
@@ -375,6 +376,16 @@ function EditorInner({ noteId }: { noteId: string }) {
               </button>
             </>
           )}
+          <HistoryPopover
+            noteId={noteId}
+            onRestored={(updated) => {
+              titleRef.current = updated.title;
+              contentRef.current = updated.content;
+              setTitle(updated.title);
+              editor?.commands.setContent(updated.content);
+              useStore.getState().applyNoteUpdate(updated);
+            }}
+          />
           <button
             onClick={async () => {
               try {
@@ -533,6 +544,95 @@ function EditorInner({ noteId }: { noteId: string }) {
 
       {editor && <SelectionMenu editor={editor} />}
     </main>
+  );
+}
+
+/** Version history popover — checkpoints accrue as you edit; click to restore. */
+function HistoryPopover({
+  noteId,
+  onRestored,
+}: {
+  noteId: string;
+  onRestored: (note: Note) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [versions, setVersions] = useState<NoteVersionMeta[]>([]);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    void api
+      .listNoteVersions(noteId)
+      .then(setVersions)
+      .catch(() => setVersions([]));
+  }, [open, noteId]);
+
+  const restore = async (versionId: string) => {
+    if (confirmId !== versionId) {
+      setConfirmId(versionId);
+      setTimeout(() => setConfirmId(null), 2500);
+      return;
+    }
+    try {
+      const updated = await api.restoreNoteVersion(versionId);
+      setOpen(false);
+      onRestored(updated);
+      useStore.getState().toast("Version restored — the previous state was checkpointed", "success");
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        title="Version history"
+        className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors hover:bg-stone-900 ${
+          open ? "bg-stone-900 text-stone-200" : "text-stone-400 hover:text-stone-200"
+        }`}
+      >
+        <History size={12} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/40">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+              Version history
+            </p>
+            {versions.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => void restore(v.id)}
+                className={`block w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors ${
+                  confirmId === v.id ? "bg-clay-600/20" : "hover:bg-stone-800/70"
+                }`}
+              >
+                <span className="flex items-baseline gap-2">
+                  <span className="truncate text-xs text-stone-200">
+                    {v.title || "Untitled"}
+                  </span>
+                  <span className="ml-auto shrink-0 text-[9px] text-stone-600">
+                    {relativeTime(v.created_at)}
+                  </span>
+                </span>
+                <span className="mt-0.5 line-clamp-2 text-[10px] text-stone-500">
+                  {confirmId === v.id
+                    ? "Click again to restore this version"
+                    : v.preview || "(empty)"}
+                </span>
+              </button>
+            ))}
+            {versions.length === 0 && (
+              <p className="px-2.5 py-3 text-center text-[11px] text-stone-600">
+                No checkpoints yet — they accumulate as you edit.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

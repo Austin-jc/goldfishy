@@ -66,6 +66,8 @@ pub fn update_note(app: AppHandle, id: String, title: String, content: String) -
     state.last_activity.store(now, Ordering::Relaxed);
 
     if old.title != title || old.content != content {
+        // Checkpoint the pre-edit state (rate-limited inside the helper).
+        db::maybe_snapshot_note(&db, &id, &old.title, &old.content).map_err(eanyhow)?;
         db.execute(
             "UPDATE notes SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4",
             params![title, content, now, id],
@@ -843,6 +845,64 @@ pub fn save_image(app: AppHandle, src_path: String) -> CmdResult<String> {
     std::fs::create_dir_all(&dir).map_err(estr)?;
     std::fs::copy(&src, dir.join(&name)).map_err(estr)?;
     Ok(format!("images/{name}"))
+}
+
+// ---------------------------------------------------------------- versions
+
+#[tauri::command]
+pub async fn list_note_versions(
+    app: AppHandle,
+    note_id: String,
+) -> CmdResult<Vec<crate::models::NoteVersionMeta>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let mut stmt = db
+        .prepare(
+            "SELECT id, note_id, title, content, created_at FROM note_versions
+             WHERE note_id = ?1 ORDER BY created_at DESC",
+        )
+        .map_err(estr)?;
+    let rows = stmt
+        .query_map(params![note_id], |r| {
+            let content: String = r.get(3)?;
+            Ok(crate::models::NoteVersionMeta {
+                id: r.get(0)?,
+                note_id: r.get(1)?,
+                title: r.get(2)?,
+                preview: content.chars().take(160).collect(),
+                chars: content.chars().count() as i64,
+                created_at: r.get(4)?,
+            })
+        })
+        .map_err(estr)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Replace the note's content with a stored version (snapshotting the
+/// current state first, so a restore is itself undoable).
+#[tauri::command]
+pub async fn restore_note_version(app: AppHandle, version_id: String) -> CmdResult<Note> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let (note_id, title, content): (String, String, String) = db
+        .query_row(
+            "SELECT note_id, title, content FROM note_versions WHERE id = ?1",
+            params![version_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(estr)?;
+    let current = db::get_note(&db, &note_id).map_err(eanyhow)?;
+    db::snapshot_note(&db, &note_id, &current.title, &current.content).map_err(eanyhow)?;
+    db.execute(
+        "UPDATE notes SET title = ?1, content = ?2, updated_at = ?3,
+                embedding_status = 'STALE', llm_status = 'STALE'
+         WHERE id = ?4",
+        params![title, content, now_ms(), note_id],
+    )
+    .map_err(estr)?;
+    let note = db::get_note(&db, &note_id).map_err(eanyhow)?;
+    let _ = app.emit("note-updated", &note);
+    Ok(note)
 }
 
 /// Save pasted image data (base64) into app storage; returns the relative path.

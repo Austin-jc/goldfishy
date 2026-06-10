@@ -55,6 +55,18 @@ pub struct ActionItem {
     pub updated_at: i64,
 }
 
+/// A history entry as listed in the UI — content arrives as a short preview;
+/// the full text stays server-side until a restore.
+#[derive(Serialize, Clone, Debug)]
+pub struct NoteVersionMeta {
+    pub id: String,
+    pub note_id: String,
+    pub title: String,
+    pub preview: String,
+    pub chars: i64,
+    pub created_at: i64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct QueueStatus {
     pub embed_stale: i64,

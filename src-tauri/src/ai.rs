@@ -565,6 +565,9 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
     }
 
     let db = state.db.lock().unwrap();
+    // AI rewrites always checkpoint the original first.
+    let before = db::get_note(&db, note_id)?;
+    db::snapshot_note(&db, note_id, &before.title, &before.content)?;
     db.execute(
         "UPDATE notes SET content = ?1, updated_at = ?2, embedding_status = 'STALE', llm_status = 'STALE' WHERE id = ?3",
         rusqlite::params![new_content, now_ms(), note_id],

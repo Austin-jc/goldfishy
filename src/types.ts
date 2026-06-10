@@ -85,6 +85,15 @@ export interface ActionItem {
   updated_at: number;
 }
 
+export interface NoteVersionMeta {
+  id: string;
+  note_id: string;
+  title: string;
+  preview: string;
+  chars: number;
+  created_at: number;
+}
+
 export interface CollectionSummary {
   summary: string;
   updated_at: number;

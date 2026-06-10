@@ -56,6 +56,8 @@ pub fn run() {
             commands::purge_note,
             commands::empty_trash,
             commands::list_trashed_notes,
+            commands::list_note_versions,
+            commands::restore_note_version,
             commands::move_note,
             commands::set_note_pinned,
             commands::add_tag,
