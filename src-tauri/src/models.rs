@@ -20,6 +20,7 @@ pub struct Note {
     pub suggested_folder_id: Option<String>,
     pub has_embedding: bool,
     pub pinned: bool,
+    pub deleted_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

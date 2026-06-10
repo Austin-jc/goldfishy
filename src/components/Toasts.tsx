@@ -14,13 +14,25 @@ export default function Toasts() {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
       {toasts.map((t) => (
-        <button
+        <div
           key={t.id}
           onClick={() => dismiss(t.id)}
-          className={`fade-in rounded-lg border px-3 py-2 text-left text-xs shadow-lg ${colors[t.kind]}`}
+          className={`fade-in flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs shadow-lg ${colors[t.kind]}`}
         >
-          {t.text}
-        </button>
+          <span className="min-w-0 flex-1">{t.text}</span>
+          {t.action && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                dismiss(t.id);
+                t.action!.run();
+              }}
+              className="shrink-0 cursor-pointer rounded-md bg-clay-600 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-clay-500"
+            >
+              {t.action.label}
+            </button>
+          )}
+        </div>
       ))}
     </div>
   );

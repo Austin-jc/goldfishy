@@ -36,6 +36,10 @@ export const api = {
   updateNote: (id: string, title: string, content: string) =>
     invoke<Note>("update_note", { id, title, content }),
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),
+  restoreNote: (id: string) => invoke<Note>("restore_note", { id }),
+  purgeNote: (id: string) => invoke<void>("purge_note", { id }),
+  emptyTrash: () => invoke<number>("empty_trash"),
+  listTrashedNotes: () => invoke<Note[]>("list_trashed_notes"),
   moveNote: (id: string, folderId: string | null) =>
     invoke<Note>("move_note", { id, folderId }),
   setNotePinned: (id: string, pinned: boolean) =>

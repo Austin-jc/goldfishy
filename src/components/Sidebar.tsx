@@ -24,6 +24,7 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
@@ -493,6 +494,8 @@ export default function Sidebar() {
                 )}
               </div>
             )}
+
+            <TrashSection />
           </div>
         )}
       </div>
@@ -574,6 +577,124 @@ function TagRow({
       >
         <Trash2 size={12} />
       </button>
+    </div>
+  );
+}
+
+/** Soft-deleted notes: restore or delete forever; auto-purged after 30 days. */
+function TrashSection() {
+  const trash = useStore((s) => s.trash);
+  const [open, setOpen] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+
+  if (trash.length === 0) return null;
+
+  const restore = async (id: string) => {
+    try {
+      await api.restoreNote(id);
+      const st = useStore.getState();
+      await st.refreshNotes();
+      await st.refreshTrash();
+      void st.refreshTags();
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  const emptyAll = async () => {
+    if (!confirmEmpty) {
+      setConfirmEmpty(true);
+      setTimeout(() => setConfirmEmpty(false), 2500);
+      return;
+    }
+    try {
+      const n = await api.emptyTrash();
+      await useStore.getState().refreshTrash();
+      useStore.getState().toast(`Deleted ${n} note${n === 1 ? "" : "s"} forever`, "info");
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  return (
+    <>
+      <div className="mt-4 flex items-center justify-between px-2.5">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-300"
+        >
+          {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          Trash · {trash.length}
+        </button>
+        {open && (
+          <button
+            onClick={() => void emptyAll()}
+            className={`cursor-pointer text-[10px] transition-colors ${
+              confirmEmpty ? "text-red-400" : "text-stone-500 hover:text-red-400"
+            }`}
+            title="Permanently delete everything in the trash"
+          >
+            {confirmEmpty ? "click to confirm" : "empty"}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-0.5">
+          {trash.map((n) => (
+            <TrashRow key={n.id} note={n} onRestore={() => void restore(n.id)} />
+          ))}
+          <p className="px-[21px] py-1 text-[9px] text-stone-600">
+            Items are deleted forever after 30 days.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TrashRow({ note, onRestore }: { note: Note; onRestore: () => void }) {
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  return (
+    <div className="group flex items-center gap-1.5 rounded-lg py-1 pl-[21px] pr-2 text-[12.5px] text-stone-500 transition-colors hover:bg-stone-800/40">
+      <FileText size={12} className="shrink-0 text-stone-700" />
+      <span className="truncate" title={note.title || "Untitled"}>
+        {note.title || "Untitled"}
+      </span>
+      <span className="ml-auto flex shrink-0 items-center gap-1">
+        <span className="text-[9px] text-stone-600 group-hover:hidden">
+          {note.deleted_at ? relativeTime(note.deleted_at) : ""}
+        </span>
+        <span className="hidden items-center gap-1 group-hover:flex">
+          <button
+            onClick={onRestore}
+            className="cursor-pointer rounded p-0.5 text-stone-500 hover:text-sage-300"
+            title="Restore note"
+          >
+            <Undo2 size={12} />
+          </button>
+          <button
+            onClick={async () => {
+              if (!confirmPurge) {
+                setConfirmPurge(true);
+                setTimeout(() => setConfirmPurge(false), 2500);
+                return;
+              }
+              try {
+                await api.purgeNote(note.id);
+                await useStore.getState().refreshTrash();
+              } catch (e) {
+                useStore.getState().toast(String(e), "error");
+              }
+            }}
+            className={`cursor-pointer rounded p-0.5 ${
+              confirmPurge ? "text-red-400" : "text-stone-500 hover:text-red-400"
+            }`}
+            title={confirmPurge ? "Click again to delete forever" : "Delete forever"}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
+      </span>
     </div>
   );
 }

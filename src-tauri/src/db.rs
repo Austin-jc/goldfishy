@@ -116,6 +116,7 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN deleted_at INTEGER", []);
     Ok(())
 }
 
@@ -124,7 +125,7 @@ pub fn ai_input(title: &str, content: &str) -> String {
     format!("{}\n\n{}", title, content)
 }
 
-const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned";
+const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at";
 
 fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
     Ok(Note {
@@ -139,6 +140,7 @@ fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
         suggested_folder_id: row.get(8)?,
         has_embedding: row.get(9)?,
         pinned: row.get(10)?,
+        deleted_at: row.get(11)?,
         tags: Vec::new(),
         score: None,
         snippet: None,
@@ -200,7 +202,8 @@ pub fn list_notes(
     let mut notes: Vec<Note> = match (folder_id, tags.is_empty()) {
         (Some(f), _) => {
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes WHERE folder_id = ?1 ORDER BY updated_at DESC"
+                "SELECT {NOTE_COLS} FROM notes
+                 WHERE folder_id = ?1 AND deleted_at IS NULL ORDER BY updated_at DESC"
             ))?;
             let rows = stmt.query_map(params![f], row_to_note)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
@@ -209,7 +212,7 @@ pub fn list_notes(
             // Notes carrying ALL of the selected tags.
             let placeholders = vec!["?"; tags.len()].join(",");
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes WHERE id IN (
+                "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NULL AND id IN (
                     SELECT note_id FROM note_tags WHERE tag IN ({placeholders})
                     GROUP BY note_id HAVING COUNT(DISTINCT tag) = {}
                  ) ORDER BY updated_at DESC",
@@ -220,12 +223,23 @@ pub fn list_notes(
         }
         (None, true) => {
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes ORDER BY updated_at DESC"
+                "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC"
             ))?;
             let rows = stmt.query_map([], row_to_note)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         }
     };
+    attach_tags(conn, &mut notes)?;
+    Ok(notes)
+}
+
+/// Soft-deleted notes, most recently trashed first.
+pub fn list_trashed(conn: &Connection) -> Result<Vec<Note>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_note)?;
+    let mut notes = rows.collect::<rusqlite::Result<Vec<_>>>()?;
     attach_tags(conn, &mut notes)?;
     Ok(notes)
 }
@@ -264,7 +278,9 @@ pub fn list_folders(conn: &Connection) -> Result<Vec<Folder>> {
 
 pub fn list_tags(conn: &Connection) -> Result<Vec<TagCount>> {
     let mut stmt = conn.prepare(
-        "SELECT tag, COUNT(*) FROM note_tags GROUP BY tag ORDER BY COUNT(*) DESC, tag COLLATE NOCASE",
+        "SELECT t.tag, COUNT(*) FROM note_tags t
+         JOIN notes n ON n.id = t.note_id AND n.deleted_at IS NULL
+         GROUP BY t.tag ORDER BY COUNT(*) DESC, t.tag COLLATE NOCASE",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(TagCount {
@@ -314,7 +330,7 @@ pub fn list_action_items(conn: &Connection) -> Result<Vec<ActionItem>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {ACTION_COLS} FROM action_items a
          LEFT JOIN notes n ON n.id = a.note_id
-         WHERE a.status != 'dismissed'
+         WHERE a.status != 'dismissed' AND (a.note_id IS NULL OR n.deleted_at IS NULL)
          ORDER BY (a.due_at IS NULL), a.due_at ASC, a.created_at DESC"
     ))?;
     let rows = stmt.query_map([], row_to_action)?;

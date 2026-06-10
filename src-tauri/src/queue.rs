@@ -26,16 +26,24 @@ pub fn spawn_worker(app: AppHandle) {
 pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    let count = |sql: &str| -> rusqlite::Result<i64> { db.query_row(sql, [], |r| r.get(0)) };
+    let count = |status_col: &str, status: &str| -> rusqlite::Result<i64> {
+        db.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM notes WHERE {status_col} = '{status}' AND deleted_at IS NULL"
+            ),
+            [],
+            |r| r.get(0),
+        )
+    };
     // Phase is an atomic on purpose: never block status on the embedder mutex,
     // which is held for the whole duration of a download or an embed batch.
     let phase = state.embedder_phase.load(Ordering::Relaxed);
     let activity = state.current_activity.lock().unwrap().clone();
     let status = QueueStatus {
-        embed_stale: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'STALE'")?,
-        embed_pending: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'PENDING'")?,
-        llm_stale: count("SELECT COUNT(*) FROM notes WHERE llm_status = 'STALE'")?,
-        llm_pending: count("SELECT COUNT(*) FROM notes WHERE llm_status = 'PENDING'")?,
+        embed_stale: count("embedding_status", "STALE")?,
+        embed_pending: count("embedding_status", "PENDING")?,
+        llm_stale: count("llm_status", "STALE")?,
+        llm_pending: count("llm_status", "PENDING")?,
         sweep_active: state.sweep_active.load(Ordering::Relaxed),
         embedder_ready: phase == crate::state::embedder_phase::READY,
         embedder_state: crate::state::embedder_phase::as_str(phase).to_string(),
@@ -119,6 +127,29 @@ fn check_due_reminders(app: &AppHandle, notify_system: bool) -> Result<()> {
     Ok(())
 }
 
+const TRASH_RETENTION_MS: i64 = 30 * 24 * 3600 * 1000;
+const PURGE_INTERVAL_MS: i64 = 6 * 3600 * 1000;
+
+/// Hard-delete trash older than 30 days; runs at most every few hours.
+fn purge_old_trash(app: &AppHandle) -> Result<()> {
+    let state = app.state::<AppState>();
+    let now = now_ms();
+    let last = state.last_trash_purge.load(Ordering::Relaxed);
+    if now - last < PURGE_INTERVAL_MS {
+        return Ok(());
+    }
+    state.last_trash_purge.store(now, Ordering::Relaxed);
+    let db = state.db.lock().unwrap();
+    let n = db.execute(
+        "DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
+        params![now - TRASH_RETENTION_MS],
+    )?;
+    if n > 0 {
+        eprintln!("[trash] purged {n} note(s) older than 30 days");
+    }
+    Ok(())
+}
+
 async fn tick(app: &AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
     let settings = {
@@ -129,6 +160,9 @@ async fn tick(app: &AppHandle) -> Result<()> {
     // Reminders fire regardless of automation mode.
     if let Err(e) = check_due_reminders(app, settings.notify_system) {
         eprintln!("[reminders] {e:#}");
+    }
+    if let Err(e) = purge_old_trash(app) {
+        eprintln!("[trash] {e:#}");
     }
 
     let sweep = state.sweep_active.load(Ordering::Relaxed);
@@ -145,7 +179,7 @@ async fn tick(app: &AppHandle) -> Result<()> {
             let db = state.db.lock().unwrap();
             let mut stmt = db.prepare(
                 "SELECT id, title, content FROM notes
-                 WHERE embedding_status = 'STALE' AND updated_at <= ?1
+                 WHERE embedding_status = 'STALE' AND deleted_at IS NULL AND updated_at <= ?1
                  ORDER BY updated_at ASC LIMIT 8",
             )?;
             let rows = stmt.query_map(params![now - debounce_ms], |r| {
@@ -230,7 +264,8 @@ async fn tick(app: &AppHandle) -> Result<()> {
                 let db = state.db.lock().unwrap();
                 let cutoff = if sweep { now } else { now - debounce_ms };
                 db.query_row(
-                    "SELECT id, title FROM notes WHERE llm_status = 'STALE' AND updated_at <= ?1
+                    "SELECT id, title FROM notes
+                     WHERE llm_status = 'STALE' AND deleted_at IS NULL AND updated_at <= ?1
                      ORDER BY updated_at ASC LIMIT 1",
                     params![cutoff],
                     |r| Ok((r.get(0)?, r.get(1)?)),

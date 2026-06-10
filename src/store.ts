@@ -16,6 +16,8 @@ export interface Toast {
   id: number;
   kind: "info" | "error" | "success";
   text: string;
+  /** Optional inline action (e.g. Undo); dismisses the toast when run. */
+  action?: { label: string; run: () => void };
 }
 
 let toastSeq = 1;
@@ -44,6 +46,8 @@ interface Store {
   actionItems: ActionItem[];
   /** Due reminders currently shown as in-app banners. */
   reminders: ActionItem[];
+  /** Soft-deleted notes (Trash section). */
+  trash: Note[];
 
   init: () => Promise<void>;
   refreshNotes: () => Promise<void>;
@@ -69,9 +73,10 @@ interface Store {
   setTheme: (theme: string) => void;
   setActionsOpen: (b: boolean) => void;
   refreshActions: () => Promise<void>;
+  refreshTrash: () => Promise<void>;
   pushReminder: (item: ActionItem) => void;
   dismissReminder: (id: string) => void;
-  toast: (text: string, kind?: Toast["kind"]) => void;
+  toast: (text: string, kind?: Toast["kind"], action?: Toast["action"]) => void;
   dismissToast: (id: number) => void;
 }
 
@@ -97,6 +102,7 @@ export const useStore = create<Store>((set, get) => ({
   actionsOpen: false,
   actionItems: [],
   reminders: [],
+  trash: [],
 
   init: async () => {
     const [dir, settings, folders, tags, queue] = await Promise.all([
@@ -111,6 +117,7 @@ export const useStore = create<Store>((set, get) => ({
     await get().refreshNotes();
     set({ ready: true });
     void get().refreshActions();
+    void get().refreshTrash();
   },
 
   refreshNotes: async () => {
@@ -164,6 +171,18 @@ export const useStore = create<Store>((set, get) => ({
       await api.deleteNote(id);
       get().removeNoteLocal(id);
       void get().refreshTags();
+      void get().refreshTrash();
+      get().toast("Note moved to trash", "info", {
+        label: "Undo",
+        run: () => {
+          void api.restoreNote(id).then(async () => {
+            await get().refreshNotes();
+            await get().refreshTrash();
+            void get().refreshTags();
+            void get().selectNote(id);
+          });
+        },
+      });
     } catch (e) {
       get().toast(String(e), "error");
     }
@@ -225,6 +244,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  refreshTrash: async () => {
+    try {
+      set({ trash: await api.listTrashedNotes() });
+    } catch {
+      // Non-critical; the section just stays as-is.
+    }
+  },
+
   pushReminder: (item) =>
     set((s) =>
       s.reminders.some((r) => r.id === item.id)
@@ -234,10 +261,10 @@ export const useStore = create<Store>((set, get) => ({
   dismissReminder: (id) =>
     set((s) => ({ reminders: s.reminders.filter((r) => r.id !== id) })),
 
-  toast: (text, kind = "info") => {
+  toast: (text, kind = "info", action) => {
     const id = toastSeq++;
-    set((s) => ({ toasts: [...s.toasts, { id, kind, text }] }));
-    setTimeout(() => get().dismissToast(id), 5000);
+    set((s) => ({ toasts: [...s.toasts, { id, kind, text, action }] }));
+    setTimeout(() => get().dismissToast(id), action ? 8000 : 5000);
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));

@@ -52,4 +52,6 @@ pub struct AppState {
     /// work targets a single note); None when idle. Only ever held for an
     /// instant — safe to read from async status commands.
     pub current_activity: Arc<Mutex<Option<(String, Option<String>)>>>,
+    /// Last time the 30-day trash purge ran (ms epoch).
+    pub last_trash_purge: Arc<AtomicI64>,
 }

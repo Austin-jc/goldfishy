@@ -97,13 +97,57 @@ pub fn update_note(app: AppHandle, id: String, title: String, content: String) -
     db::get_note(&db, &id).map_err(eanyhow)
 }
 
+/// Soft delete: the note moves to Trash and drops out of every list/query.
 #[tauri::command]
 pub fn delete_note(app: AppHandle, id: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    db.execute("DELETE FROM notes WHERE id = ?1", params![id])
-        .map_err(estr)?;
+    db.execute(
+        "UPDATE notes SET deleted_at = ?1, pinned = 0 WHERE id = ?2",
+        params![now_ms(), id],
+    )
+    .map_err(estr)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn restore_note(app: AppHandle, id: String) -> CmdResult<Note> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute("UPDATE notes SET deleted_at = NULL WHERE id = ?1", params![id])
+        .map_err(estr)?;
+    db::get_note(&db, &id).map_err(eanyhow)
+}
+
+/// Permanently delete one trashed note.
+#[tauri::command]
+pub fn purge_note(app: AppHandle, id: String) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "DELETE FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )
+    .map_err(estr)?;
+    Ok(())
+}
+
+/// Permanently delete everything in the trash; returns how many were purged.
+#[tauri::command]
+pub fn empty_trash(app: AppHandle) -> CmdResult<i64> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let n = db
+        .execute("DELETE FROM notes WHERE deleted_at IS NOT NULL", [])
+        .map_err(estr)?;
+    Ok(n as i64)
+}
+
+#[tauri::command]
+pub fn list_trashed_notes(app: AppHandle) -> CmdResult<Vec<Note>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db::list_trashed(&db).map_err(eanyhow)
 }
 
 #[tauri::command]
@@ -222,7 +266,10 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
         let mut scored: Vec<(String, f32)> = {
             let db = state.db.lock().unwrap();
             let mut stmt = db
-                .prepare("SELECT id, embedding FROM notes WHERE embedding IS NOT NULL")
+                .prepare(
+                    "SELECT id, embedding FROM notes
+                     WHERE embedding IS NOT NULL AND deleted_at IS NULL",
+                )
                 .map_err(estr)?;
             let rows = stmt
                 .query_map([], |r| {
@@ -262,7 +309,7 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
                         bm25(notes_fts)
                  FROM notes_fts
                  JOIN notes n ON n.rowid = notes_fts.rowid
-                 WHERE notes_fts MATCH ?1
+                 WHERE notes_fts MATCH ?1 AND n.deleted_at IS NULL
                  ORDER BY bm25(notes_fts)
                  LIMIT 50",
             )
@@ -309,7 +356,10 @@ pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Not
         };
         let qv = embed::from_blob(&target);
         let mut stmt = db
-            .prepare("SELECT id, embedding FROM notes WHERE embedding IS NOT NULL AND id != ?1")
+            .prepare(
+                "SELECT id, embedding FROM notes
+                 WHERE embedding IS NOT NULL AND deleted_at IS NULL AND id != ?1",
+            )
             .map_err(estr)?;
         let rows = stmt
             .query_map(params![note_id], |r| {
@@ -470,7 +520,8 @@ pub async fn ai_title_untitled(app: AppHandle) -> CmdResult<i64> {
         let db = state.db.lock().unwrap();
         let mut stmt = db
             .prepare(
-                "SELECT id FROM notes WHERE TRIM(title) = '' AND TRIM(content) != ''
+                "SELECT id FROM notes
+                 WHERE TRIM(title) = '' AND TRIM(content) != '' AND deleted_at IS NULL
                  ORDER BY updated_at DESC",
             )
             .map_err(estr)?;
@@ -697,7 +748,7 @@ pub fn reindex_all(app: AppHandle) -> CmdResult<QueueStatus> {
             let mut stmt = db
                 .prepare(
                     "SELECT id, title, content, last_embed_input, last_llm_input,
-                            (embedding IS NOT NULL) FROM notes",
+                            (embedding IS NOT NULL) FROM notes WHERE deleted_at IS NULL",
                 )
                 .map_err(estr)?;
             let mapped = stmt
@@ -752,7 +803,8 @@ pub async fn list_queued_notes(app: AppHandle) -> CmdResult<Vec<Note>> {
         let mut stmt = db
             .prepare(
                 "SELECT id FROM notes
-                 WHERE embedding_status != 'CLEAN' OR llm_status != 'CLEAN'
+                 WHERE deleted_at IS NULL
+                   AND (embedding_status != 'CLEAN' OR llm_status != 'CLEAN')
                  ORDER BY updated_at DESC LIMIT 200",
             )
             .map_err(estr)?;

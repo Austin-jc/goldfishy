@@ -18,6 +18,8 @@ export interface Note {
   suggested_folder_id: string | null;
   has_embedding: boolean;
   pinned: boolean;
+  /** ms epoch when soft-deleted (in Trash); null for live notes. */
+  deleted_at: number | null;
   score?: number;
   snippet?: string;
 }

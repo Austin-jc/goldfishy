@@ -33,6 +33,7 @@ pub fn run() {
                 llm_cooldown_until: Arc::new(AtomicI64::new(0)),
                 sweep_active: Arc::new(AtomicBool::new(false)),
                 current_activity: Arc::new(Mutex::new(None)),
+                last_trash_purge: Arc::new(AtomicI64::new(0)),
             });
             queue::spawn_worker(app.handle().clone());
             // Warm the embedder off the UI thread right away: the first-launch
@@ -51,6 +52,10 @@ pub fn run() {
             commands::get_note,
             commands::update_note,
             commands::delete_note,
+            commands::restore_note,
+            commands::purge_note,
+            commands::empty_trash,
+            commands::list_trashed_notes,
             commands::move_note,
             commands::set_note_pinned,
             commands::add_tag,
