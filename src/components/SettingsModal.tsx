@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { Download, FolderOpen, Loader2, RefreshCw, X, Zap } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
+import { THEMES } from "../themes";
 import type { AppSettings, DownloadProgress } from "../types";
 
 export default function SettingsModal() {
@@ -120,18 +121,26 @@ export default function SettingsModal() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6">
-      <div className="flex max-h-full w-[620px] flex-col rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-        <header className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
-          <h2 className="text-sm font-semibold text-zinc-100">Settings</h2>
-          <button onClick={close} className="text-zinc-500 hover:text-zinc-200">
+      <div className="flex max-h-full w-[620px] flex-col rounded-xl border border-stone-800 bg-stone-900 shadow-2xl">
+        <header className="flex items-center justify-between border-b border-stone-800 px-5 py-3">
+          <h2 className="text-sm font-semibold text-stone-100">Settings</h2>
+          <button onClick={close} className="text-stone-500 hover:text-stone-200">
             <X size={16} />
           </button>
         </header>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+          {/* ---------------- Appearance ---------------- */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Appearance
+            </h3>
+            <ThemePicker />
+          </section>
+
           {/* ---------------- AI Engine (BYOM) ---------------- */}
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
               AI Engine &amp; Model Selection
             </h3>
             <div className="flex gap-2">
@@ -147,8 +156,8 @@ export default function SettingsModal() {
                   onClick={() => set("llm_backend", value)}
                   className={`rounded-md border px-3 py-1.5 text-xs ${
                     local.llm_backend === value
-                      ? "border-indigo-600 bg-indigo-600/20 text-indigo-300"
-                      : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                      ? "border-clay-600 bg-clay-600/20 text-clay-300"
+                      : "border-stone-700 text-stone-400 hover:border-stone-500"
                   }`}
                 >
                   {label}
@@ -157,7 +166,7 @@ export default function SettingsModal() {
             </div>
 
             {local.llm_backend === "external" && (
-              <div className="mt-3 space-y-2 rounded-lg border border-zinc-800 p-3">
+              <div className="mt-3 space-y-2 rounded-lg border border-stone-800 p-3">
                 <Field label="Server URL (OpenAI-compatible, e.g. Ollama / LM Studio)">
                   <input
                     value={local.external_url}
@@ -189,7 +198,7 @@ export default function SettingsModal() {
             )}
 
             {local.llm_backend === "sidecar" && (
-              <div className="mt-3 space-y-2 rounded-lg border border-zinc-800 p-3">
+              <div className="mt-3 space-y-2 rounded-lg border border-stone-800 p-3">
                 <Field label="llama-server binary (from llama.cpp)">
                   <div className="flex gap-2">
                     <input
@@ -235,7 +244,7 @@ export default function SettingsModal() {
                   </div>
                 </Field>
                 {(downloading || download) && (
-                  <div className="text-[10px] text-zinc-500">
+                  <div className="text-[10px] text-stone-500">
                     {download ? (
                       <>
                         {download.file} — {(download.downloaded / 1048576).toFixed(0)} MB
@@ -246,8 +255,8 @@ export default function SettingsModal() {
                       "Contacting HuggingFace…"
                     )}
                     {pct !== null && !download?.done && (
-                      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-zinc-800">
-                        <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-stone-800">
+                        <div className="h-full bg-clay-500" style={{ width: `${pct}%` }} />
                       </div>
                     )}
                   </div>
@@ -273,18 +282,18 @@ export default function SettingsModal() {
 
           {/* ---------------- Processing ---------------- */}
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
               Processing Mode &amp; Timers
             </h3>
-            <div className="space-y-3 rounded-lg border border-zinc-800 p-3">
+            <div className="space-y-3 rounded-lg border border-stone-800 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-zinc-200">Automation mode</p>
-                  <p className="text-[10px] text-zinc-500">
+                  <p className="text-xs text-stone-200">Automation mode</p>
+                  <p className="text-[10px] text-stone-500">
                     Full Auto runs the background queues; Manual Only waits for the AI buttons.
                   </p>
                 </div>
-                <div className="flex overflow-hidden rounded-md border border-zinc-700">
+                <div className="flex overflow-hidden rounded-md border border-stone-700">
                   {(
                     [
                       ["auto", "Full Auto"],
@@ -296,8 +305,8 @@ export default function SettingsModal() {
                       onClick={() => set("automation_mode", value)}
                       className={`px-3 py-1 text-xs ${
                         local.automation_mode === value
-                          ? "bg-indigo-600 text-white"
-                          : "text-zinc-400 hover:bg-zinc-800"
+                          ? "bg-clay-600 text-white"
+                          : "text-stone-400 hover:bg-stone-800"
                       }`}
                     >
                       {label}
@@ -327,8 +336,8 @@ export default function SettingsModal() {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-zinc-200">Sync / Re-index</p>
-                  <p className="text-[10px] text-zinc-500">
+                  <p className="text-xs text-stone-200">Sync / Re-index</p>
+                  <p className="text-[10px] text-stone-500">
                     Sweep the database and process notes skipped while in Manual Mode.
                   </p>
                 </div>
@@ -346,7 +355,7 @@ export default function SettingsModal() {
 
           {/* ---------------- Data ---------------- */}
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
               Data &amp; Export
             </h3>
             <div className="flex gap-2">
@@ -360,7 +369,7 @@ export default function SettingsModal() {
           </section>
         </div>
 
-        <footer className="flex justify-end gap-2 border-t border-zinc-800 px-5 py-3">
+        <footer className="flex justify-end gap-2 border-t border-stone-800 px-5 py-3">
           <button onClick={close} className={btnCls}>
             Cancel
           </button>
@@ -372,7 +381,7 @@ export default function SettingsModal() {
               }
             }}
             disabled={saving}
-            className="flex items-center gap-1 rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+            className="flex items-center gap-1 rounded-md bg-clay-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-clay-500 disabled:opacity-60"
           >
             {saving && <Loader2 size={12} className="animate-spin" />}
             Save
@@ -383,10 +392,46 @@ export default function SettingsModal() {
   );
 }
 
+function ThemePicker() {
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTheme(t.id)}
+            className={`flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-xs ring-1 transition-colors ${
+              theme === t.id
+                ? "bg-stone-800/70 text-stone-100 ring-clay-500"
+                : "text-stone-400 ring-stone-800 hover:text-stone-200 hover:ring-stone-600"
+            }`}
+          >
+            <span className="flex shrink-0 -space-x-1">
+              {t.preview.map((c) => (
+                <span
+                  key={c}
+                  className="h-3.5 w-3.5 rounded-full ring-1 ring-black/30"
+                  style={{ background: c }}
+                />
+              ))}
+            </span>
+            <span className="truncate">{t.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[10px] text-stone-500">
+        Applies immediately — no save needed.
+      </p>
+    </div>
+  );
+}
+
 const inputCls =
-  "rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-indigo-600 w-full";
+  "rounded-md border border-stone-700 bg-stone-950 px-2 py-1.5 text-xs text-stone-200 outline-none focus:border-clay-600 w-full";
 const btnCls =
-  "flex items-center gap-1.5 rounded-md border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-50";
+  "flex items-center gap-1.5 rounded-md border border-stone-700 px-3 py-1.5 text-xs text-stone-300 hover:border-stone-500 hover:text-stone-100 disabled:opacity-50";
 
 function Field({
   label,
@@ -399,7 +444,7 @@ function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1 block text-[10px] font-medium text-zinc-500">{label}</span>
+      <span className="mb-1 block text-[10px] font-medium text-stone-500">{label}</span>
       {children}
     </label>
   );

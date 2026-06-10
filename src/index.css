@@ -1,4 +1,278 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+
+  /* Muted clay / terracotta — the single interactive accent. */
+  --color-clay-200: #ead9cd;
+  --color-clay-300: #dcb9a3;
+  --color-clay-400: #cd9878;
+  --color-clay-500: #b3704f;
+  --color-clay-600: #9a5b40;
+  --color-clay-700: #7d4a34;
+  --color-clay-900: #44281c;
+  --color-clay-950: #2a1812;
+
+  /* Soft sage — reserved for AI-derived content (tags, suggestions). */
+  --color-sage-200: #cfdac4;
+  --color-sage-300: #b4c4a6;
+  --color-sage-400: #97ab85;
+  --color-sage-500: #7c9169;
+  --color-sage-700: #55654a;
+  --color-sage-900: #2c3526;
+
+  /* Code block background — always a step away from the app background. */
+  --color-code-bg: #171412;
+}
+
+/* ----------------------------------------------------------------------
+   Themes. Every theme remaps the SAME ramps the UI is built from:
+   stone-* = neutrals (950 is always the app background, 100 the strongest
+   text — light themes simply invert the lightness of the ramp),
+   clay-*  = interactive accent, sage-* = AI accent.
+   --------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+}
+
+/* Terra — cream, terracotta, indigo ink (light) */
+[data-theme="terra"] {
+  color-scheme: light;
+  --color-stone-100: #2f3147;
+  --color-stone-200: #3d405b;
+  --color-stone-300: #4a4c63;
+  --color-stone-400: #5f5e51;
+  --color-stone-500: #75735f;
+  --color-stone-600: #8d8a77;
+  --color-stone-700: #c9c3a8;
+  --color-stone-800: #e0dbc0;
+  --color-stone-900: #ece8d0;
+  --color-stone-950: #f4f1de;
+  --color-clay-200: #8f3e26;
+  --color-clay-300: #a84a2e;
+  --color-clay-400: #bc5638;
+  --color-clay-500: #d06848;
+  --color-clay-600: #b3543a;
+  --color-clay-700: #9c4527;
+  --color-clay-900: #f3d3c7;
+  --color-clay-950: #f8e4dc;
+  --color-sage-200: #3c5a4a;
+  --color-sage-300: #4d7361;
+  --color-sage-400: #5c8872;
+  --color-sage-500: #6e9c84;
+  --color-sage-700: #52796a;
+  --color-sage-900: #dcebe2;
+  --color-code-bg: #ebe7d3;
+}
+
+/* Blossom — rose, cream, sage, slate ink (light) */
+[data-theme="blossom"] {
+  color-scheme: light;
+  --color-stone-100: #3b4647;
+  --color-stone-200: #4a5759;
+  --color-stone-300: #545f61;
+  --color-stone-400: #62686a;
+  --color-stone-500: #767672;
+  --color-stone-600: #8b8a82;
+  --color-stone-700: #d3c5bb;
+  --color-stone-800: #e8d4c9;
+  --color-stone-900: #f2ddd2;
+  --color-stone-950: #f7e9e1;
+  --color-clay-200: #973f53;
+  --color-clay-300: #ad4c61;
+  --color-clay-400: #c05c72;
+  --color-clay-500: #d4798c;
+  --color-clay-600: #b25064;
+  --color-clay-700: #994355;
+  --color-clay-900: #f6d7dd;
+  --color-clay-950: #fae6ea;
+  --color-sage-200: #44584a;
+  --color-sage-300: #53685a;
+  --color-sage-400: #64796a;
+  --color-sage-500: #7b8f7c;
+  --color-sage-700: #5d7263;
+  --color-sage-900: #dfe8e0;
+  --color-code-bg: #efddd2;
+}
+
+/* Ember — deep olive, sand, burnt orange (dark) */
+[data-theme="ember"] {
+  --color-stone-100: #efe6c8;
+  --color-stone-200: #ddd2ae;
+  --color-stone-300: #c5b890;
+  --color-stone-400: #a89a72;
+  --color-stone-500: #8a7d58;
+  --color-stone-600: #6e6342;
+  --color-stone-700: #4a3f22;
+  --color-stone-800: #332a14;
+  --color-stone-900: #241d0c;
+  --color-stone-950: #191407;
+  --color-clay-200: #fbd9bd;
+  --color-clay-300: #f7bb8d;
+  --color-clay-400: #f2a65a;
+  --color-clay-500: #f58549;
+  --color-clay-600: #b85420;
+  --color-clay-700: #93431d;
+  --color-clay-900: #4a2410;
+  --color-clay-950: #2e1709;
+  --color-sage-200: #f7e3b8;
+  --color-sage-300: #eec170;
+  --color-sage-400: #d9a854;
+  --color-sage-500: #bb8c3e;
+  --color-sage-700: #8a6526;
+  --color-sage-900: #3f2f10;
+  --color-code-bg: #120e05;
+}
+
+/* Pastel — lavender neutrals, rose accent, sky AI (light) */
+[data-theme="pastel"] {
+  color-scheme: light;
+  --color-stone-100: #363142;
+  --color-stone-200: #474252;
+  --color-stone-300: #56505e;
+  --color-stone-400: #655e6e;
+  --color-stone-500: #7a7283;
+  --color-stone-600: #8f8699;
+  --color-stone-700: #d5c9e0;
+  --color-stone-800: #e9e1f0;
+  --color-stone-900: #f3eef7;
+  --color-stone-950: #faf7fc;
+  --color-clay-200: #993d62;
+  --color-clay-300: #b04a73;
+  --color-clay-400: #c65a85;
+  --color-clay-500: #db79a0;
+  --color-clay-600: #ad4d74;
+  --color-clay-700: #8f3f60;
+  --color-clay-900: #fbdce8;
+  --color-clay-950: #fdeaf1;
+  --color-sage-200: #2f5d8a;
+  --color-sage-300: #3b70a5;
+  --color-sage-400: #4d83b8;
+  --color-sage-500: #6b9dcb;
+  --color-sage-700: #3f6e9e;
+  --color-sage-900: #ddebfa;
+  --color-code-bg: #f2ecf7;
+}
+
+/* Abyss — midnight navy, cyan accent (dark) */
+[data-theme="abyss"] {
+  --color-stone-100: #e0e4f4;
+  --color-stone-200: #c3c9e2;
+  --color-stone-300: #a2aacd;
+  --color-stone-400: #828ab8;
+  --color-stone-500: #666da0;
+  --color-stone-600: #4d5485;
+  --color-stone-700: #1b2058;
+  --color-stone-800: #0d1145;
+  --color-stone-900: #060833;
+  --color-stone-950: #020324;
+  --color-clay-200: #b3ecf8;
+  --color-clay-300: #7adcf2;
+  --color-clay-400: #2cc4e4;
+  --color-clay-500: #00b4d8;
+  --color-clay-600: #00779b;
+  --color-clay-700: #015d7a;
+  --color-clay-900: #043047;
+  --color-clay-950: #02202f;
+  --color-sage-200: #caf0f8;
+  --color-sage-300: #90e0ef;
+  --color-sage-400: #5fc6dd;
+  --color-sage-500: #3aa6c2;
+  --color-sage-700: #19708c;
+  --color-sage-900: #0a3a4a;
+  --color-code-bg: #01011a;
+}
+
+/* Lagoon — petrol blue, amber accent, sky AI (dark) */
+[data-theme="lagoon"] {
+  --color-stone-100: #e2eff5;
+  --color-stone-200: #c2dae6;
+  --color-stone-300: #9dbecf;
+  --color-stone-400: #79a2b8;
+  --color-stone-500: #5887a1;
+  --color-stone-600: #3f718c;
+  --color-stone-700: #114a66;
+  --color-stone-800: #073850;
+  --color-stone-900: #02283a;
+  --color-stone-950: #011721;
+  --color-clay-200: #ffe8b0;
+  --color-clay-300: #ffd166;
+  --color-clay-400: #ffb703;
+  --color-clay-500: #fb8500;
+  --color-clay-600: #b35f00;
+  --color-clay-700: #8f4c00;
+  --color-clay-900: #4a2a05;
+  --color-clay-950: #2e1a03;
+  --color-sage-200: #c8e6f5;
+  --color-sage-300: #8ecae6;
+  --color-sage-400: #56b3d6;
+  --color-sage-500: #219ebc;
+  --color-sage-700: #13708a;
+  --color-sage-900: #093a4a;
+  --color-code-bg: #001019;
+}
+
+/* Marine — deep teal slate, coral accent, teal AI (dark) */
+[data-theme="marine"] {
+  --color-stone-100: #e5eef1;
+  --color-stone-200: #cbdbe1;
+  --color-stone-300: #adc4cd;
+  --color-stone-400: #8fadb8;
+  --color-stone-500: #7396a3;
+  --color-stone-600: #5f8290;
+  --color-stone-700: #38606f;
+  --color-stone-800: #294a57;
+  --color-stone-900: #1d3741;
+  --color-stone-950: #102028;
+  --color-clay-200: #f8cfc2;
+  --color-clay-300: #f2a98f;
+  --color-clay-400: #ee8b6c;
+  --color-clay-500: #e76f51;
+  --color-clay-600: #bc4a2e;
+  --color-clay-700: #983b24;
+  --color-clay-900: #4c2014;
+  --color-clay-950: #2f140c;
+  --color-sage-200: #bfe6e1;
+  --color-sage-300: #7fc9c0;
+  --color-sage-400: #4cb3a6;
+  --color-sage-500: #2a9d8f;
+  --color-sage-700: #1d6e64;
+  --color-sage-900: #0e3933;
+  --color-code-bg: #0b181e;
+}
+
+/* Grove — cream, olive, ochre (light) */
+[data-theme="grove"] {
+  color-scheme: light;
+  --color-stone-100: #283618;
+  --color-stone-200: #333f1f;
+  --color-stone-300: #44502d;
+  --color-stone-400: #5a6140;
+  --color-stone-500: #6f7050;
+  --color-stone-600: #87855f;
+  --color-stone-700: #d4cba0;
+  --color-stone-800: #ebe3bd;
+  --color-stone-900: #f6f0d2;
+  --color-stone-950: #fefae0;
+  --color-clay-200: #7a440f;
+  --color-clay-300: #93521a;
+  --color-clay-400: #a85e1f;
+  --color-clay-500: #bc6c25;
+  --color-clay-600: #a05a1c;
+  --color-clay-700: #84491a;
+  --color-clay-900: #f5e3c0;
+  --color-clay-950: #f9eed6;
+  --color-sage-200: #3a421d;
+  --color-sage-300: #4a5526;
+  --color-sage-400: #59672e;
+  --color-sage-500: #6b7b3a;
+  --color-sage-700: #4d5a28;
+  --color-sage-900: #e8ead2;
+  --color-code-bg: #f5efd2;
+}
 
 html,
 body,
@@ -8,8 +282,8 @@ body,
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-200 antialiased;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  @apply bg-stone-950 text-stone-200 antialiased;
+  font-family: var(--font-sans);
   user-select: none;
   cursor: default;
 }
@@ -21,12 +295,16 @@ textarea,
   cursor: text;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--color-clay-500) 35%, transparent);
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(63 63 70 / 0.6);
+  background: color-mix(in srgb, var(--color-stone-600) 55%, transparent);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {
@@ -37,31 +315,34 @@ textarea,
 
 .ProseMirror {
   outline: none;
-  min-height: 100%;
-  line-height: 1.65;
-  font-size: 0.95rem;
+  min-height: 16rem;
+  line-height: 1.7;
+  font-size: 0.975rem;
+  color: var(--color-stone-300);
 }
 
 .ProseMirror > * + * {
-  margin-top: 0.55em;
+  margin-top: 0.6em;
 }
 
 .ProseMirror h1 {
-  font-size: 1.6rem;
+  font-size: 1.55rem;
   font-weight: 700;
-  color: #fafafa;
-  margin-top: 1em;
+  letter-spacing: -0.015em;
+  color: var(--color-stone-100);
+  margin-top: 1.1em;
 }
 .ProseMirror h2 {
-  font-size: 1.3rem;
+  font-size: 1.28rem;
   font-weight: 650;
-  color: #f4f4f5;
-  margin-top: 0.9em;
+  letter-spacing: -0.01em;
+  color: var(--color-stone-100);
+  margin-top: 1em;
 }
 .ProseMirror h3 {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #f4f4f5;
+  color: var(--color-stone-100);
 }
 
 .ProseMirror ul {
@@ -76,60 +357,116 @@ textarea,
   margin: 0;
 }
 .ProseMirror li + li {
-  margin-top: 0.15em;
+  margin-top: 0.2em;
+}
+.ProseMirror li::marker {
+  color: var(--color-stone-500);
 }
 
 .ProseMirror blockquote {
-  border-left: 3px solid #6366f1;
-  padding-left: 0.9rem;
-  color: #a1a1aa;
+  border-left: 2px solid var(--color-clay-500);
+  padding-left: 1rem;
+  color: var(--color-stone-400);
   font-style: italic;
 }
 
 .ProseMirror code {
-  background: #27272a;
+  background: var(--color-stone-800);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.85em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #fbbf24;
+  color: var(--color-clay-300);
 }
 
 .ProseMirror pre {
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
+  background: var(--color-code-bg);
+  border-radius: 10px;
+  padding: 0.85rem 1.1rem;
   overflow-x: auto;
 }
 .ProseMirror pre code {
   background: transparent;
   padding: 0;
-  color: #e4e4e7;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--color-stone-300);
+}
+
+/* muted syntax highlighting (lowlight / highlight.js tokens), theme-driven */
+.ProseMirror pre .hljs-comment,
+.ProseMirror pre .hljs-quote {
+  color: var(--color-stone-500);
+  font-style: italic;
+}
+.ProseMirror pre .hljs-keyword,
+.ProseMirror pre .hljs-selector-tag,
+.ProseMirror pre .hljs-doctag,
+.ProseMirror pre .hljs-meta {
+  color: var(--color-clay-400);
+}
+.ProseMirror pre .hljs-string,
+.ProseMirror pre .hljs-regexp,
+.ProseMirror pre .hljs-addition {
+  color: var(--color-sage-400);
+}
+.ProseMirror pre .hljs-number,
+.ProseMirror pre .hljs-literal,
+.ProseMirror pre .hljs-symbol,
+.ProseMirror pre .hljs-bullet {
+  color: var(--color-sage-300);
+}
+.ProseMirror pre .hljs-title,
+.ProseMirror pre .hljs-section,
+.ProseMirror pre .hljs-name {
+  color: var(--color-clay-200);
+}
+.ProseMirror pre .hljs-type,
+.ProseMirror pre .hljs-built_in,
+.ProseMirror pre .hljs-class .hljs-title,
+.ProseMirror pre .hljs-title.class_ {
+  color: var(--color-clay-300);
+}
+.ProseMirror pre .hljs-attr,
+.ProseMirror pre .hljs-attribute,
+.ProseMirror pre .hljs-property,
+.ProseMirror pre .hljs-variable,
+.ProseMirror pre .hljs-template-variable,
+.ProseMirror pre .hljs-params {
+  color: var(--color-stone-300);
+}
+.ProseMirror pre .hljs-deletion {
+  color: #c97b6e;
+}
+.ProseMirror pre .hljs-emphasis {
+  font-style: italic;
+}
+.ProseMirror pre .hljs-strong {
+  font-weight: 600;
 }
 
 .ProseMirror img {
   max-width: 100%;
-  border-radius: 8px;
-  border: 1px solid #27272a;
+  border-radius: 10px;
 }
 .ProseMirror img.ProseMirror-selectednode {
-  outline: 2px solid #6366f1;
+  outline: 2px solid var(--color-clay-500);
 }
 
 .ProseMirror a {
-  color: #818cf8;
+  color: var(--color-clay-400);
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .ProseMirror hr {
   border: none;
-  border-top: 1px solid #3f3f46;
-  margin: 1.2em 0;
+  border-top: 1px solid var(--color-stone-800);
+  margin: 1.4em 0;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
-  color: #52525b;
+  color: var(--color-stone-600);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -137,7 +474,7 @@ textarea,
 }
 
 mark {
-  background: rgb(99 102 241 / 0.35);
+  background: color-mix(in srgb, var(--color-clay-500) 35%, transparent);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -169,4 +506,11 @@ mark {
 }
 .pulse-dot {
   animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .pulse-dot {
+    animation: none;
+  }
 }

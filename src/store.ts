@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, setDataDir } from "./api";
+import { applyTheme, DEFAULT_THEME } from "./themes";
 import type {
   AppSettings,
   Folder,
@@ -33,6 +34,8 @@ interface Store {
   searching: boolean;
   settingsOpen: boolean;
   paletteOpen: boolean;
+  sidebarCollapsed: boolean;
+  theme: string;
   toasts: Toast[];
 
   init: () => Promise<void>;
@@ -53,6 +56,8 @@ interface Store {
   setSearching: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
+  toggleSidebar: () => void;
+  setTheme: (theme: string) => void;
   toast: (text: string, kind?: Toast["kind"]) => void;
   dismissToast: (id: number) => void;
 }
@@ -72,6 +77,8 @@ export const useStore = create<Store>((set, get) => ({
   searching: false,
   settingsOpen: false,
   paletteOpen: false,
+  sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
+  theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   toasts: [],
 
   init: async () => {
@@ -171,6 +178,18 @@ export const useStore = create<Store>((set, get) => ({
   setSearching: (searching) => set({ searching }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  toggleSidebar: () =>
+    set((s) => {
+      const sidebarCollapsed = !s.sidebarCollapsed;
+      localStorage.setItem("nn.sidebarCollapsed", sidebarCollapsed ? "1" : "0");
+      return { sidebarCollapsed };
+    }),
+
+  setTheme: (theme) => {
+    localStorage.setItem("nn.theme", theme);
+    applyTheme(theme);
+    set({ theme });
+  },
 
   toast: (text, kind = "info") => {
     const id = toastSeq++;

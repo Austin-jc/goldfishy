@@ -40,6 +40,7 @@ export interface QueueStatus {
   llm_pending: number;
   sweep_active: boolean;
   embedder_ready: boolean;
+  embedder_state: "cold" | "downloading" | "loading" | "ready" | "error";
 }
 
 export interface AppSettings {

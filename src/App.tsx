@@ -53,6 +53,9 @@ export default function App() {
       } else if (key === ",") {
         e.preventDefault();
         useStore.getState().setSettingsOpen(true);
+      } else if (key === "\\") {
+        e.preventDefault();
+        useStore.getState().toggleSidebar();
       }
     };
     window.addEventListener("keydown", handler);
@@ -61,8 +64,8 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div className="flex h-full items-center justify-center text-zinc-500">
-        Loading NexusNote…
+      <div className="flex h-full items-center justify-center text-sm text-stone-500">
+        Loading GoldFishy…
       </div>
     );
   }

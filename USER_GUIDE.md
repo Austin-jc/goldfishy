@@ -1,12 +1,12 @@
-# NexusNote — User Guide
+# GoldFishy — User Guide
 
-Welcome to NexusNote! This guide explains everything in plain language — no technical knowledge needed.
+Welcome to GoldFishy! This guide explains everything in plain language — no technical knowledge needed.
 
 ---
 
-## What is NexusNote?
+## What is GoldFishy?
 
-NexusNote is a note-taking app that **organizes your notes for you**. You just write; the app can suggest labels, file notes into the right folder, tidy up messy text, and find notes even when you don't remember the exact words you used.
+GoldFishy is a note-taking app that **organizes your notes for you**. You just write; the app can suggest labels, file notes into the right folder, tidy up messy text, and find notes even when you don't remember the exact words you used.
 
 The most important thing to know: **everything stays on your computer.** Your notes are never sent to the internet or any company's servers. The "AI" lives entirely on your own machine.
 
@@ -16,7 +16,7 @@ The most important thing to know: **everything stays on your computer.** Your no
 
 ### The two panels
 
-When you open NexusNote you'll see two areas:
+When you open GoldFishy you'll see two areas:
 
 1. **Left panel** — everything for finding notes: the search box, your folders, your tags, and the list of notes. The Settings gear and the **+ New** button live at the top.
 2. **Editor** (the rest of the window) — the note you're currently writing.
@@ -29,7 +29,7 @@ When you open NexusNote you'll see two areas:
 
 ### Making text look nice
 
-Use the toolbar above the note (bold, headings, lists, quotes…), or use these typing shortcuts — they transform as you type:
+Select some text and a small floating toolbar appears right above it (bold, headings, lists, quotes, code…). Selecting several lines and clicking the code-block button turns the whole selection into a single highlighted code block. You can also use these typing shortcuts — they transform as you type:
 
 | Type this… | …and you get |
 |---|---|
@@ -71,20 +71,20 @@ Press **⌘K** at any time to open the quick search window (like Spotlight). Sta
 
 ### The search box
 
-You can also type in the search box at the top of the left panel. There are two search styles — switch with the small buttons under the box:
+You can also type in the search box at the top of the left panel. There are two search styles — switch with the tiny toggle inside the right edge of the box (🔍 / ✦):
 
 - **Keyword** — finds notes containing the words you type. Instant, updates as you type.
 - **Semantic** — finds notes *about* what you type, even if the words don't match. Searching "flight stuff" will find your airline booking note even if it never says "flight stuff". Type your search, then press **Enter**.
 
-> The very first semantic search ever downloads a small "understanding" file (about 80 MB) — this is a one-time thing and needs internet just that once. After that it works fully offline, forever.
+> The first time you ever open the app it downloads a small "understanding" file (about 80 MB) in the background — the sidebar shows "Downloading semantic model…" while it happens, and you can keep writing the whole time. After that it works fully offline, forever.
 
 ---
 
 ## 4. The AI features — what they do
 
-Once AI is enabled (next section), NexusNote can:
+Once AI is enabled (next section), GoldFishy can:
 
-- 🏷 **Auto-tag** — a few seconds after you stop typing, the app quietly adds three suggested tags to your note. AI tags look purple with a ✨; your own tags look gray. Don't like one? Hover over it and click the ×.
+- 🏷 **Auto-tag** — a few seconds after you stop typing, the app quietly adds three suggested tags to your note. AI tags look green with a ✨; your own tags look neutral. Don't like one? Hover over it and click the ×.
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
 - • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and it gets reorganized into tidy bullet points.
 - 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it.
@@ -111,9 +111,9 @@ The AI needs a "brain" — a language model running on your computer. The easies
    ```
 3. Wait for the download to finish (about 2 GB — a few minutes on decent Wi-Fi). You can close Terminal afterwards.
 
-### Step 3 — Connect NexusNote to it
+### Step 3 — Connect GoldFishy to it
 
-1. In NexusNote, click **Settings** (bottom of the sidebar).
+1. In GoldFishy, click the **Settings** gear (top of the left panel).
 2. Under **AI Engine & Model Selection**, click **External server**.
 3. Make sure the Server URL says `http://localhost:11434` (it's filled in for you).
 4. In **Model name**, type: `llama3.2`
@@ -124,12 +124,12 @@ Done! Auto-tagging starts working in the background, and the Auto-bullet / Summa
 
 > **"Localhost"? "Server"?** Don't worry — despite the words, this is all happening inside your own computer. Nothing goes online.
 
-### Alternative: let NexusNote download a model itself
+### Alternative: let GoldFishy download a model itself
 
-If you'd rather not install Ollama, NexusNote can run models directly, but this path needs one technical ingredient (a helper program called `llama-server`) that usually requires a tool called Homebrew to install. If the steps below sound foreign, ask a techy friend — or just use the Ollama method above, it's genuinely easier.
+If you'd rather not install Ollama, GoldFishy can run models directly, but this path needs one technical ingredient (a helper program called `llama-server`) that usually requires a tool called Homebrew to install. If the steps below sound foreign, ask a techy friend — or just use the Ollama method above, it's genuinely easier.
 
 1. Install the helper: in Terminal, run `brew install llama.cpp`
-2. In NexusNote: **Settings → AI Engine → Local model (llama.cpp)**
+2. In GoldFishy: **Settings → AI Engine → Local model (llama.cpp)**
 3. Next to the binary box, click **Browse** and pick `llama-server` (usually in `/opt/homebrew/bin/`)
 4. In the HuggingFace box, paste a model name like `bartowski/Llama-3.2-3B-Instruct-GGUF` and click **Download**
 5. When the download finishes, click **Test connection**, then **Save**
@@ -149,9 +149,10 @@ If you'd rather not install Ollama, NexusNote can run models directly, but this 
 
 **Reading the little signals**
 
-- A pulsing **blue dot** on a note = it's being indexed for search (takes a second).
-- A pulsing **purple dot** = the AI is reading it to suggest tags.
-- The line at the bottom of the sidebar tells you what the background engine is doing ("All notes up to date", "3 notes queued", etc.).
+- A pulsing **tan dot** on a note = it's being indexed for search (takes a second).
+- A pulsing **green dot** = the AI is reading it to suggest tags.
+- The line at the bottom of the sidebar tells you what the background engine is doing ("All notes up to date", "3 notes queued", etc.). When notes are queued, **click that line** to see exactly which notes are waiting and jump to any of them.
+- The left panel itself is adjustable: drag its right edge to resize it, or hide it entirely with the panel button at the top (or **⌘\**).
 
 ---
 
@@ -175,13 +176,13 @@ Only twice, ever: once when the search "understanding" file downloads (~80 MB), 
 AI is disabled. Follow section 5 to enable it.
 
 **"No LLM backend configured" or "LLM request failed".**
-NexusNote can't reach the AI. If you used Ollama, make sure Ollama is running (its icon in the menu bar; open the Ollama app if not), then try **Test connection** in Settings again.
+GoldFishy can't reach the AI. If you used Ollama, make sure Ollama is running (its icon in the menu bar; open the Ollama app if not), then try **Test connection** in Settings again.
 
 **Tagging seems slow.**
 That's by design — the heavy AI waits politely until you've been idle for a few seconds and processes notes one at a time so your computer stays fast. Results fade in when ready.
 
 **Semantic search says the model isn't ready.**
-The first search needs that one-time download. Make sure you're online and try again; once the sidebar stops saying "embedder cold", it's permanent.
+The understanding file downloads automatically the first time the app opens. If the sidebar says "Downloading semantic model…", just give it a minute; if it says "Semantic engine error", check that you're online and restart the app — once the download finishes, it's permanent.
 
 **A tag or folder suggestion is wrong.**
 Remove the tag with its × or click **Dismiss** on the suggestion. Your manual choices always win — the AI never overrides a tag you added or moves a note without your click.

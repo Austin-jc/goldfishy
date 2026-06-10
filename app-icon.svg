@@ -1,0 +1,40 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#39261a"/>
+      <stop offset="0.55" stop-color="#1f1510"/>
+      <stop offset="1" stop-color="#120d09"/>
+    </linearGradient>
+    <linearGradient id="fishg" x1="4" y1="8" x2="44" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="0.55" stop-color="#f59e4b"/>
+      <stop offset="1" stop-color="#e2533f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#ffb45e" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffb45e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- macOS-style rounded square -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#glow)"/>
+
+  <!-- origami goldfish (logo geometry, scaled up) -->
+  <g transform="translate(183,176) scale(14)">
+    <!-- tail — two folded triangles -->
+    <polygon points="2,13 16,24 2,35" fill="url(#fishg)"/>
+    <polygon points="2,13 16,24 9,24" fill="#fff" opacity="0.18"/>
+    <polygon points="2,35 16,24 9,24" fill="#000" opacity="0.18"/>
+    <!-- body — kite fold -->
+    <polygon points="12,24 27,9 45,24 27,39" fill="url(#fishg)"/>
+    <!-- lower body fold shadow -->
+    <polygon points="12,24 27,39 45,24" fill="#000" opacity="0.14"/>
+    <!-- head crease highlight -->
+    <polygon points="27,9 45,24 33,24" fill="#fff" opacity="0.14"/>
+    <!-- dorsal fin fold -->
+    <polygon points="20,16 27,9 30,15" fill="#000" opacity="0.12"/>
+    <!-- eye -->
+    <circle cx="37" cy="21" r="1.9" fill="#402013"/>
+  </g>
+</svg>

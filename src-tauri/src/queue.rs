@@ -27,19 +27,22 @@ pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let count = |sql: &str| -> rusqlite::Result<i64> { db.query_row(sql, [], |r| r.get(0)) };
-    let embedder_ready = state.embedder.lock().unwrap().is_some();
+    // Phase is an atomic on purpose: never block status on the embedder mutex,
+    // which is held for the whole duration of a download or an embed batch.
+    let phase = state.embedder_phase.load(Ordering::Relaxed);
     let status = QueueStatus {
         embed_stale: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'STALE'")?,
         embed_pending: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'PENDING'")?,
         llm_stale: count("SELECT COUNT(*) FROM notes WHERE llm_status = 'STALE'")?,
         llm_pending: count("SELECT COUNT(*) FROM notes WHERE llm_status = 'PENDING'")?,
         sweep_active: state.sweep_active.load(Ordering::Relaxed),
-        embedder_ready,
+        embedder_ready: phase == crate::state::embedder_phase::READY,
+        embedder_state: crate::state::embedder_phase::as_str(phase).to_string(),
     };
     Ok(status)
 }
 
-fn emit_status(app: &AppHandle) {
+pub fn emit_status(app: &AppHandle) {
     if let Ok(s) = queue_status(app) {
         let _ = app.emit("queue-status", s);
     }

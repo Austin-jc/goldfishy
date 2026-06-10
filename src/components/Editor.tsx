@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor, type Editor as TiptapEditor } from "@tiptap/react";
+import {
+  BubbleMenu,
+  EditorContent,
+  useEditor,
+  type Editor as TiptapEditor,
+} from "@tiptap/react";
+import { isTextSelection } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
+import { common, createLowlight } from "lowlight";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Bold,
@@ -18,6 +26,7 @@ import {
   Plus,
   Quote,
   Sparkles,
+  SquareCode,
   Strikethrough,
   Tags,
   Trash2,
@@ -25,19 +34,21 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { LocalImage } from "../editor/extensions";
+import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { isImagePath, relativeTime } from "../utils";
+
+const lowlight = createLowlight(common);
 
 export default function Editor() {
   const noteId = useStore((s) => s.selectedNote?.id);
   if (!noteId) {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center gap-3 text-zinc-600">
-        <FileText size={32} />
+      <main className="flex flex-1 flex-col items-center justify-center gap-3 text-stone-600">
+        <FileText size={32} strokeWidth={1.5} />
         <p className="text-sm">Select a note or create a new one</p>
         <button
           onClick={() => void useStore.getState().createNote()}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+          className="cursor-pointer rounded-lg bg-clay-600 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-clay-500"
         >
           New note
         </button>
@@ -60,6 +71,13 @@ function EditorInner({ noteId }: { noteId: string }) {
   const contentRef = useRef(note.content);
   const dirtyRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // A brand-new note starts in the title field.
+  useEffect(() => {
+    if (!note.title && !note.content) titleInputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveNow = useCallback(async () => {
     if (!dirtyRef.current) return;
@@ -80,7 +98,8 @@ function EditorInner({ noteId }: { noteId: string }) {
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight }),
       LocalImage,
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: "Start writing… markdown works." }),
@@ -155,10 +174,13 @@ function EditorInner({ noteId }: { noteId: string }) {
     }
   };
 
+  const ghostBtn =
+    "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50";
+
   return (
     <main className="flex min-w-0 flex-1 flex-col">
-      {/* header */}
-      <header className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
+      {/* header — borderless, recedes behind the canvas */}
+      <header className="flex items-center gap-2 px-5 pb-1 pt-3">
         <select
           value={note.folder_id ?? ""}
           onChange={async (e) => {
@@ -166,7 +188,7 @@ function EditorInner({ noteId }: { noteId: string }) {
             useStore.getState().applyNoteUpdate(updated);
             void useStore.getState().refreshNotes();
           }}
-          className="max-w-44 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 outline-none"
+          className="max-w-44 cursor-pointer rounded-lg bg-transparent px-2 py-1 text-xs text-stone-400 outline-none transition-colors hover:bg-stone-900 hover:text-stone-200"
         >
           <option value="">No folder</option>
           {folderOptions(folders).map((o) => (
@@ -176,16 +198,16 @@ function EditorInner({ noteId }: { noteId: string }) {
           ))}
         </select>
 
-        <span className="text-[10px] text-zinc-600">edited {relativeTime(note.updated_at)}</span>
+        <span className="text-[10px] text-stone-600">edited {relativeTime(note.updated_at)}</span>
 
-        <span className="ml-auto flex items-center gap-1">
+        <span className="ml-auto flex items-center gap-0.5">
           {llmReady && (
             <>
               <button
                 onClick={() => void runBulletify()}
                 disabled={aiWorking !== ""}
                 title="Auto-bullet: restructure into concise bullet points"
-                className="flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-indigo-700 hover:text-indigo-300 disabled:opacity-50"
+                className={ghostBtn + " hover:text-clay-300"}
               >
                 {aiWorking === "bullets" ? (
                   <Loader2 size={12} className="animate-spin" />
@@ -198,7 +220,7 @@ function EditorInner({ noteId }: { noteId: string }) {
                 onClick={() => void runOrganize()}
                 disabled={aiWorking !== ""}
                 title="Suggest tags and a destination folder"
-                className="flex items-center gap-1 rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-indigo-700 hover:text-indigo-300 disabled:opacity-50"
+                className={ghostBtn + " hover:text-clay-300"}
               >
                 {aiWorking === "organize" ? (
                   <Loader2 size={12} className="animate-spin" />
@@ -220,11 +242,11 @@ function EditorInner({ noteId }: { noteId: string }) {
               void useStore.getState().deleteNote(noteId);
             }}
             title={confirmDelete ? "Click again to delete" : "Delete note"}
-            className={`rounded-md border px-2 py-1 text-[11px] ${
+            className={
               confirmDelete
-                ? "border-red-800 bg-red-950 text-red-300"
-                : "border-zinc-700 text-zinc-400 hover:border-red-800 hover:text-red-400"
-            }`}
+                ? "flex cursor-pointer items-center rounded-lg bg-red-950/80 px-2.5 py-1.5 text-[11px] text-red-300"
+                : ghostBtn + " hover:text-red-400"
+            }
           >
             <Trash2 size={12} />
           </button>
@@ -233,10 +255,10 @@ function EditorInner({ noteId }: { noteId: string }) {
 
       {/* AI folder routing suggestion — fades in, never a modal */}
       {suggestedFolder && (
-        <div className="fade-in flex items-center gap-2 border-b border-indigo-900/40 bg-indigo-950/30 px-4 py-1.5 text-xs text-zinc-300">
-          <Sparkles size={12} className="text-indigo-400" />
+        <div className="fade-in mx-5 mb-1 flex items-center gap-2 rounded-lg bg-sage-900/40 px-3 py-1.5 text-xs text-stone-300">
+          <Sparkles size={12} className="text-sage-300" />
           <span>
-            AI suggests filing this in <b className="text-indigo-300">{suggestedFolder.name}</b>
+            AI suggests filing this in <b className="text-sage-200">{suggestedFolder.name}</b>
           </span>
           <button
             onClick={async () => {
@@ -244,7 +266,7 @@ function EditorInner({ noteId }: { noteId: string }) {
               useStore.getState().applyNoteUpdate(updated);
               void useStore.getState().refreshNotes();
             }}
-            className="ml-2 rounded bg-indigo-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-indigo-500"
+            className="ml-2 cursor-pointer rounded-md bg-sage-700 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-sage-500"
           >
             Move
           </button>
@@ -253,90 +275,104 @@ function EditorInner({ noteId }: { noteId: string }) {
               const updated = await api.dismissFolderSuggestion(noteId);
               useStore.getState().applyNoteUpdate(updated);
             }}
-            className="rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-300"
+            className="cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-stone-500 hover:text-stone-300"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* title */}
-      <input
-        value={title}
-        onChange={(e) => {
-          setTitle(e.target.value);
-          titleRef.current = e.target.value;
-          scheduleSave();
+      {/* canvas — a single centered column; whitespace does the dividing */}
+      <div
+        className="flex-1 overflow-y-auto"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) editor?.chain().focus().run();
         }}
-        placeholder="Untitled"
-        className="bg-transparent px-6 pb-1 pt-4 text-2xl font-bold text-zinc-100 outline-none placeholder:text-zinc-700"
-      />
-
-      {/* tags */}
-      <div className="flex flex-wrap items-center gap-1.5 px-6 pb-2">
-        {note.tags.map((t) => (
-          <span
-            key={t.tag}
-            className={`fade-in group flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${
-              t.source === "ai"
-                ? "border border-purple-800/70 text-purple-300"
-                : "bg-zinc-800 text-zinc-300"
-            }`}
-            title={t.source === "ai" ? "Suggested by AI" : "Manual tag"}
-          >
-            {t.source === "ai" && <Sparkles size={9} />}
-            {t.tag}
-            <button
-              onClick={async () => {
-                const updated = await api.removeTag(noteId, t.tag);
-                useStore.getState().applyNoteUpdate(updated);
-                void useStore.getState().refreshTags();
-              }}
-              className="hidden text-zinc-500 hover:text-red-400 group-hover:inline"
-            >
-              <X size={9} />
-            </button>
-          </span>
-        ))}
-        {addingTag ? (
+      >
+        <div className="mx-auto w-full max-w-3xl px-10 pt-8">
           <input
-            autoFocus
-            onBlur={() => setAddingTag(false)}
-            onKeyDown={async (e) => {
-              if (e.key === "Escape") setAddingTag(false);
-              if (e.key === "Enter") {
-                const v = (e.target as HTMLInputElement).value.trim();
-                if (v) {
-                  const updated = await api.addTag(noteId, v);
-                  useStore.getState().applyNoteUpdate(updated);
-                  void useStore.getState().refreshTags();
-                }
-                setAddingTag(false);
+            ref={titleInputRef}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              titleRef.current = e.target.value;
+              scheduleSave();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || (e.key === "ArrowDown" && !e.shiftKey)) {
+                e.preventDefault();
+                editor?.chain().focus("start").run();
               }
             }}
-            placeholder="tag name"
-            className="w-24 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-200 outline-none"
+            placeholder="Untitled"
+            className="w-full bg-transparent pb-2 text-[1.7rem] font-bold tracking-tight text-stone-100 outline-none placeholder:text-stone-700"
           />
-        ) : (
-          <button
-            onClick={() => setAddingTag(true)}
-            className="flex items-center gap-0.5 rounded-full border border-dashed border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
-          >
-            <Plus size={9} /> tag
-          </button>
-        )}
+
+          {/* tags */}
+          <div className="flex flex-wrap items-center gap-1.5 pb-7">
+            {note.tags.map((t) => (
+              <span
+                key={t.tag}
+                className={`fade-in group flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${
+                  t.source === "ai"
+                    ? "border border-sage-700/70 text-sage-300"
+                    : "bg-stone-800/80 text-stone-300"
+                }`}
+                title={t.source === "ai" ? "Suggested by AI" : "Manual tag"}
+              >
+                {t.source === "ai" && <Sparkles size={9} />}
+                {t.tag}
+                <button
+                  onClick={async () => {
+                    const updated = await api.removeTag(noteId, t.tag);
+                    useStore.getState().applyNoteUpdate(updated);
+                    void useStore.getState().refreshTags();
+                  }}
+                  className="hidden cursor-pointer text-stone-500 hover:text-red-400 group-hover:inline"
+                >
+                  <X size={9} />
+                </button>
+              </span>
+            ))}
+            {addingTag ? (
+              <input
+                autoFocus
+                onBlur={() => setAddingTag(false)}
+                onKeyDown={async (e) => {
+                  if (e.key === "Escape") setAddingTag(false);
+                  if (e.key === "Enter") {
+                    const v = (e.target as HTMLInputElement).value.trim();
+                    if (v) {
+                      const updated = await api.addTag(noteId, v);
+                      useStore.getState().applyNoteUpdate(updated);
+                      void useStore.getState().refreshTags();
+                    }
+                    setAddingTag(false);
+                  }
+                }}
+                placeholder="tag name"
+                className="w-24 rounded-full bg-stone-900 px-2.5 py-0.5 text-[10px] text-stone-200 outline-none ring-1 ring-stone-700"
+              />
+            ) : (
+              <button
+                onClick={() => setAddingTag(true)}
+                className="flex cursor-pointer items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] text-stone-600 transition-colors hover:bg-stone-900 hover:text-stone-300"
+              >
+                <Plus size={9} /> tag
+              </button>
+            )}
+          </div>
+
+          <EditorContent editor={editor} />
+          {/* generous click target below the text to keep writing */}
+          <div
+            className="h-48"
+            onClick={() => editor?.chain().focus("end").run()}
+          />
+        </div>
       </div>
 
-      {/* toolbar */}
-      {editor && <Toolbar editor={editor} />}
-
-      {/* content */}
-      <div
-        className="flex-1 overflow-y-auto px-6 py-3"
-        onClick={() => editor?.chain().focus().run()}
-      >
-        <EditorContent editor={editor} className="h-full" />
-      </div>
+      {editor && <SelectionMenu editor={editor} />}
     </main>
   );
 }
@@ -345,7 +381,7 @@ function folderOptions(folders: { id: string; name: string; parent_id: string | 
   const out: { id: string; label: string }[] = [];
   const walk = (parent: string | null, depth: number) => {
     for (const f of folders.filter((x) => x.parent_id === parent)) {
-      out.push({ id: f.id, label: `${"  ".repeat(depth)}${f.name}` });
+      out.push({ id: f.id, label: `${"  ".repeat(depth)}${f.name}` });
       walk(f.id, depth + 1);
     }
   };
@@ -353,7 +389,8 @@ function folderOptions(folders: { id: string; name: string; parent_id: string | 
   return out;
 }
 
-function Toolbar({ editor }: { editor: TiptapEditor }) {
+/** Floating contextual toolbar — appears over the current text selection. */
+function SelectionMenu({ editor }: { editor: TiptapEditor }) {
   const Btn = ({
     active,
     onClick,
@@ -369,8 +406,10 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={title}
-      className={`rounded p-1.5 ${
-        active ? "bg-indigo-600/30 text-indigo-300" : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+      className={`cursor-pointer rounded-md p-1.5 transition-colors ${
+        active
+          ? "bg-clay-600/25 text-clay-300"
+          : "text-stone-400 hover:bg-stone-800 hover:text-stone-100"
       }`}
     >
       {children}
@@ -378,75 +417,89 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
   );
 
   return (
-    <div className="flex items-center gap-0.5 border-y border-zinc-800/70 px-5 py-0.5">
-      <Btn
-        title="Bold"
-        active={editor.isActive("bold")}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      >
-        <Bold size={13} />
-      </Btn>
-      <Btn
-        title="Italic"
-        active={editor.isActive("italic")}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        <Italic size={13} />
-      </Btn>
-      <Btn
-        title="Strikethrough"
-        active={editor.isActive("strike")}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      >
-        <Strikethrough size={13} />
-      </Btn>
-      <span className="mx-1 h-4 w-px bg-zinc-800" />
-      <Btn
-        title="Heading 1"
-        active={editor.isActive("heading", { level: 1 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-      >
-        <Heading1 size={13} />
-      </Btn>
-      <Btn
-        title="Heading 2"
-        active={editor.isActive("heading", { level: 2 })}
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-      >
-        <Heading2 size={13} />
-      </Btn>
-      <span className="mx-1 h-4 w-px bg-zinc-800" />
-      <Btn
-        title="Bullet list"
-        active={editor.isActive("bulletList")}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      >
-        <List size={13} />
-      </Btn>
-      <Btn
-        title="Numbered list"
-        active={editor.isActive("orderedList")}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      >
-        <ListOrdered size={13} />
-      </Btn>
-      <Btn
-        title="Quote"
-        active={editor.isActive("blockquote")}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      >
-        <Quote size={13} />
-      </Btn>
-      <Btn
-        title="Code block"
-        active={editor.isActive("codeBlock")}
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-      >
-        <Code size={13} />
-      </Btn>
-      <span className="ml-auto text-[10px] text-zinc-700">
-        drag &amp; drop images · markdown syntax supported
-      </span>
-    </div>
+    <BubbleMenu
+      editor={editor}
+      tippyOptions={{ duration: 120, maxWidth: "none" }}
+      shouldShow={({ editor, state, from, to }) => {
+        if (!editor.isEditable || state.selection.empty) return false;
+        if (!isTextSelection(state.selection)) return false;
+        return state.doc.textBetween(from, to).trim().length > 0;
+      }}
+    >
+      <div className="flex items-center gap-0.5 rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/60">
+        <Btn
+          title="Bold"
+          active={editor.isActive("bold")}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+        >
+          <Bold size={13} />
+        </Btn>
+        <Btn
+          title="Italic"
+          active={editor.isActive("italic")}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+        >
+          <Italic size={13} />
+        </Btn>
+        <Btn
+          title="Strikethrough"
+          active={editor.isActive("strike")}
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+        >
+          <Strikethrough size={13} />
+        </Btn>
+        <Btn
+          title="Inline code"
+          active={editor.isActive("code")}
+          onClick={() => editor.chain().focus().toggleCode().run()}
+        >
+          <Code size={13} />
+        </Btn>
+        <span className="mx-1 h-4 w-px bg-stone-800" />
+        <Btn
+          title="Heading 1"
+          active={editor.isActive("heading", { level: 1 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        >
+          <Heading1 size={13} />
+        </Btn>
+        <Btn
+          title="Heading 2"
+          active={editor.isActive("heading", { level: 2 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        >
+          <Heading2 size={13} />
+        </Btn>
+        <span className="mx-1 h-4 w-px bg-stone-800" />
+        <Btn
+          title="Bullet list"
+          active={editor.isActive("bulletList")}
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+        >
+          <List size={13} />
+        </Btn>
+        <Btn
+          title="Numbered list"
+          active={editor.isActive("orderedList")}
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        >
+          <ListOrdered size={13} />
+        </Btn>
+        <Btn
+          title="Quote"
+          active={editor.isActive("blockquote")}
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        >
+          <Quote size={13} />
+        </Btn>
+        <Btn
+          title="Code block"
+          active={editor.isActive("codeBlock")}
+          onClick={() => toggleUnifiedCodeBlock(editor)}
+        >
+          <SquareCode size={13} />
+        </Btn>
+      </div>
+    </BubbleMenu>
   );
 }

@@ -483,9 +483,30 @@ pub fn reindex_all(app: AppHandle) -> CmdResult<QueueStatus> {
     queue::queue_status(&app).map_err(eanyhow)
 }
 
+// Async on purpose: sync commands run on the main thread, and status must
+// never make the UI wait behind the worker's locks.
 #[tauri::command]
-pub fn queue_status(app: AppHandle) -> CmdResult<QueueStatus> {
+pub async fn queue_status(app: AppHandle) -> CmdResult<QueueStatus> {
     queue::queue_status(&app).map_err(eanyhow)
+}
+
+/// Notes still waiting for (or currently in) the embedding / LLM pipelines.
+#[tauri::command]
+pub async fn list_queued_notes(app: AppHandle) -> CmdResult<Vec<Note>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let ids: Vec<String> = {
+        let mut stmt = db
+            .prepare(
+                "SELECT id FROM notes
+                 WHERE embedding_status != 'CLEAN' OR llm_status != 'CLEAN'
+                 ORDER BY updated_at DESC LIMIT 200",
+            )
+            .map_err(estr)?;
+        let rows = stmt.query_map([], |r| r.get(0)).map_err(estr)?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+    db::get_notes_by_ids(&db, &ids).map_err(eanyhow)
 }
 
 #[tauri::command]
@@ -580,7 +601,7 @@ pub fn export_notes(app: AppHandle, dest: String, format: String) -> CmdResult<i
     if format == "json" {
         let payload = serde_json::json!({
             "exported_at": iso(now_ms()),
-            "app": "NexusNote",
+            "app": "GoldFishy",
             "folders": folders,
             "notes": notes.iter().map(|n| serde_json::json!({
                 "id": n.id,
@@ -593,7 +614,7 @@ pub fn export_notes(app: AppHandle, dest: String, format: String) -> CmdResult<i
             })).collect::<Vec<_>>(),
         });
         std::fs::write(
-            dest.join("nexusnote-export.json"),
+            dest.join("goldfishy-export.json"),
             serde_json::to_string_pretty(&payload).map_err(estr)?,
         )
         .map_err(estr)?;

@@ -1,4 +1,4 @@
-# NexusNote
+# GoldFishy
 
 A lightning-fast, offline-first desktop note-taking app that eliminates manual organization. All data and AI inference stay 100% local.
 
@@ -44,7 +44,7 @@ First semantic search / first background embedding triggers a one-time ~80 MB do
 
 Open **Settings → AI Engine** and pick one of:
 
-1. **Local model (llama.cpp)** — point at a `llama-server` binary (`brew install llama.cpp`) and a `.gguf` file on disk, or paste a HuggingFace repo id (e.g. `bartowski/Llama-3.2-3B-Instruct-GGUF`) and hit Download. NexusNote spawns and manages the server as a sidecar on demand.
+1. **Local model (llama.cpp)** — point at a `llama-server` binary (`brew install llama.cpp`) and a `.gguf` file on disk, or paste a HuggingFace repo id (e.g. `bartowski/Llama-3.2-3B-Instruct-GGUF`) and hit Download. GoldFishy spawns and manages the server as a sidecar on demand.
 2. **External server** — any OpenAI-compatible endpoint, e.g. Ollama (`http://localhost:11434`, model `llama3.2`) or LM Studio.
 3. **Disabled** — everything except the LLM features still works (keyword + semantic search, folders, tags, export).
 

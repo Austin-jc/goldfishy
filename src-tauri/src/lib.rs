@@ -7,7 +7,7 @@ mod models;
 mod queue;
 mod state;
 
-use std::sync::atomic::{AtomicBool, AtomicI64};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8};
 use std::sync::{Arc, Mutex};
 
 use state::AppState;
@@ -23,6 +23,8 @@ pub fn run() {
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),
                 embedder: Arc::new(Mutex::new(None)),
+                embedder_phase: Arc::new(AtomicU8::new(state::embedder_phase::COLD)),
+                embedder_init: Arc::new(Mutex::new(())),
                 last_activity: Arc::new(AtomicI64::new(db::now_ms())),
                 sidecar: Arc::new(tokio::sync::Mutex::new(None)),
                 http: reqwest::Client::new(),
@@ -31,6 +33,15 @@ pub fn run() {
                 sweep_active: Arc::new(AtomicBool::new(false)),
             });
             queue::spawn_worker(app.handle().clone());
+            // Warm the embedder off the UI thread right away: the first-launch
+            // model download starts immediately (with visible status) instead
+            // of surprising the user mid-typing.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(e) = embed::ensure_embedder_blocking(&handle) {
+                    eprintln!("[embedder] warm-up failed: {e:#}");
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -60,6 +71,7 @@ pub fn run() {
             commands::set_settings,
             commands::reindex_all,
             commands::queue_status,
+            commands::list_queued_notes,
             commands::notify_activity,
             commands::get_data_dir,
             commands::save_image,

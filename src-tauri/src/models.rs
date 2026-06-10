@@ -47,6 +47,7 @@ pub struct QueueStatus {
     pub llm_pending: i64,
     pub sweep_active: bool,
     pub embedder_ready: bool,
+    pub embedder_state: String, // cold | downloading | loading | ready | error
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

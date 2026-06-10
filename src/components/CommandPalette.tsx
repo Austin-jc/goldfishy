@@ -185,16 +185,16 @@ export default function CommandPalette() {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="flex h-fit max-h-[60vh] w-[560px] flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2.5">
+      <div className="flex h-fit max-h-[60vh] w-[560px] flex-col overflow-hidden rounded-xl border border-stone-800 bg-stone-900 shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-stone-800 px-3 py-2.5">
           {busy ? (
-            <Loader2 size={15} className="animate-spin text-indigo-400" />
+            <Loader2 size={15} className="animate-spin text-clay-400" />
           ) : isCommandMode ? (
-            <ChevronRight size={15} className="text-indigo-400" />
+            <ChevronRight size={15} className="text-clay-400" />
           ) : mode === "semantic" ? (
-            <Sparkles size={15} className="text-indigo-400" />
+            <Sparkles size={15} className="text-clay-400" />
           ) : (
-            <Search size={15} className="text-zinc-500" />
+            <Search size={15} className="text-stone-500" />
           )}
           <input
             ref={inputRef}
@@ -209,14 +209,14 @@ export default function CommandPalette() {
                   ? "Search by meaning…"
                   : "Search notes, or type > for commands…"
             }
-            className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+            className="min-w-0 flex-1 bg-transparent text-sm text-stone-100 outline-none placeholder:text-stone-600"
           />
           {!isCommandMode && (
             <span
               className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
                 mode === "semantic"
-                  ? "bg-indigo-600/30 text-indigo-300"
-                  : "bg-zinc-800 text-zinc-500"
+                  ? "bg-clay-600/30 text-clay-300"
+                  : "bg-stone-800 text-stone-500"
               }`}
             >
               {mode}
@@ -234,20 +234,20 @@ export default function CommandPalette() {
                   onMouseEnter={() => setSel(i)}
                   onClick={() => void c.run()}
                   className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${
-                    sel === i ? "bg-indigo-600/20 text-indigo-200" : "text-zinc-300"
+                    sel === i ? "bg-clay-600/20 text-clay-200" : "text-stone-300"
                   }`}
                 >
-                  <span className="text-zinc-500">{c.icon}</span>
+                  <span className="text-stone-500">{c.icon}</span>
                   {c.label}
                   {c.hint && (
-                    <kbd className="ml-auto rounded border border-zinc-700 px-1 text-[9px] text-zinc-500">
+                    <kbd className="ml-auto rounded border border-stone-700 px-1 text-[9px] text-stone-500">
                       {c.hint}
                     </kbd>
                   )}
                 </button>
               ))}
               {filteredCommands.length === 0 && (
-                <p className="px-4 py-6 text-center text-xs text-zinc-600">No matching command</p>
+                <p className="px-4 py-6 text-center text-xs text-stone-600">No matching command</p>
               )}
             </>
           ) : (
@@ -259,16 +259,16 @@ export default function CommandPalette() {
                   onMouseEnter={() => setSel(i)}
                   onClick={() => openNote(n.id)}
                   className={`flex w-full items-start gap-2.5 px-3 py-2 text-left ${
-                    sel === i ? "bg-indigo-600/20" : ""
+                    sel === i ? "bg-clay-600/20" : ""
                   }`}
                 >
-                  <FileText size={14} className="mt-0.5 shrink-0 text-zinc-500" />
+                  <FileText size={14} className="mt-0.5 shrink-0 text-stone-500" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
-                      <span className="truncate text-sm text-zinc-100">
+                      <span className="truncate text-sm text-stone-100">
                         {n.title || "Untitled"}
                       </span>
-                      <span className="ml-auto shrink-0 text-[9px] text-zinc-600">
+                      <span className="ml-auto shrink-0 text-[9px] text-stone-600">
                         {typeof n.score === "number" && n.score <= 1 && n.score > 0
                           ? `${(n.score * 100).toFixed(0)}%`
                           : relativeTime(n.updated_at)}
@@ -276,11 +276,11 @@ export default function CommandPalette() {
                     </span>
                     {n.snippet ? (
                       <span
-                        className="line-clamp-1 text-[11px] text-zinc-500"
+                        className="line-clamp-1 text-[11px] text-stone-500"
                         dangerouslySetInnerHTML={{ __html: snippetHtml(n.snippet) }}
                       />
                     ) : (
-                      <span className="line-clamp-1 text-[11px] text-zinc-500">
+                      <span className="line-clamp-1 text-[11px] text-stone-500">
                         {stripMarkdown(n.content).slice(0, 100)}
                       </span>
                     )}
@@ -288,7 +288,7 @@ export default function CommandPalette() {
                 </button>
               ))}
               {results.length === 0 && !busy && (
-                <p className="px-4 py-6 text-center text-xs text-zinc-600">
+                <p className="px-4 py-6 text-center text-xs text-stone-600">
                   {query.trim() ? "No results" : "No notes yet"}
                 </p>
               )}
@@ -296,7 +296,7 @@ export default function CommandPalette() {
           )}
         </div>
 
-        <div className="flex gap-3 border-t border-zinc-800 px-3 py-1.5 text-[9px] text-zinc-600">
+        <div className="flex gap-3 border-t border-stone-800 px-3 py-1.5 text-[9px] text-stone-600">
           <span>↑↓ navigate</span>
           <span>↵ open</span>
           {!isCommandMode && <span>tab {mode === "keyword" ? "semantic" : "keyword"} search</span>}

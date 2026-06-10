@@ -1,8 +1,29 @@
-use std::sync::atomic::{AtomicBool, AtomicI64};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU8};
 use std::sync::{Arc, Mutex};
 
 use fastembed::TextEmbedding;
 use rusqlite::Connection;
+
+/// Lifecycle of the local embedding model. Kept in an atomic (not behind the
+/// `embedder` mutex) so status queries never wait on a download or a running
+/// embed batch.
+pub mod embedder_phase {
+    pub const COLD: u8 = 0;
+    pub const DOWNLOADING: u8 = 1;
+    pub const LOADING: u8 = 2;
+    pub const READY: u8 = 3;
+    pub const ERROR: u8 = 4;
+
+    pub fn as_str(phase: u8) -> &'static str {
+        match phase {
+            DOWNLOADING => "downloading",
+            LOADING => "loading",
+            READY => "ready",
+            ERROR => "error",
+            _ => "cold",
+        }
+    }
+}
 
 pub struct SidecarProc {
     pub child: tokio::process::Child,
@@ -14,6 +35,10 @@ pub struct SidecarProc {
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub embedder: Arc<Mutex<Option<TextEmbedding>>>,
+    /// Current `embedder_phase` value.
+    pub embedder_phase: Arc<AtomicU8>,
+    /// Single-flight guard: only one thread downloads/loads the model.
+    pub embedder_init: Arc<Mutex<()>>,
     /// Last user interaction (ms epoch) — Queue 2 only runs when the user is idle.
     pub last_activity: Arc<AtomicI64>,
     pub sidecar: Arc<tokio::sync::Mutex<Option<SidecarProc>>>,

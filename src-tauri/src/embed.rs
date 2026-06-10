@@ -1,33 +1,59 @@
+use std::sync::atomic::Ordering;
+
 use anyhow::{anyhow, Context, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use tauri::{AppHandle, Manager};
 
-use crate::state::AppState;
+use crate::state::{embedder_phase, AppState};
 
 /// Initialise the embedding model if it is not loaded yet. Blocking: call from
-/// a blocking context (worker thread / spawn_blocking).
+/// a blocking context (worker thread / spawn_blocking). The phase atomic is
+/// updated (and broadcast via queue-status) so the UI can show download/load
+/// progress instead of silently freezing on first launch.
 pub fn ensure_embedder_blocking(app: &AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
-    {
-        let guard = state.embedder.lock().unwrap();
-        if guard.is_some() {
-            return Ok(());
-        }
+    if state.embedder.lock().unwrap().is_some() {
+        return Ok(());
     }
+    // Single-flight: the first caller initialises; concurrent callers block
+    // here (on a blocking-pool thread, never the UI thread) until it is done.
+    let _init = state.embedder_init.lock().unwrap();
+    if state.embedder.lock().unwrap().is_some() {
+        return Ok(());
+    }
+
     let cache_dir = app
         .path()
         .app_data_dir()
         .context("no app data dir")?
         .join("embed-cache");
-    let model = TextEmbedding::try_new(
+    let cached = std::fs::read_dir(&cache_dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+    let phase = if cached { embedder_phase::LOADING } else { embedder_phase::DOWNLOADING };
+    state.embedder_phase.store(phase, Ordering::Relaxed);
+    crate::queue::emit_status(app);
+
+    let result = TextEmbedding::try_new(
         InitOptions::new(EmbeddingModel::AllMiniLML6V2)
             .with_cache_dir(cache_dir)
             .with_show_download_progress(false),
     )
-    .context("failed to initialise embedding model (all-MiniLM-L6-v2)")?;
-    let mut guard = state.embedder.lock().unwrap();
-    *guard = Some(model);
-    Ok(())
+    .context("failed to initialise embedding model (all-MiniLM-L6-v2)");
+
+    match result {
+        Ok(model) => {
+            *state.embedder.lock().unwrap() = Some(model);
+            state.embedder_phase.store(embedder_phase::READY, Ordering::Relaxed);
+            crate::queue::emit_status(app);
+            Ok(())
+        }
+        Err(e) => {
+            state.embedder_phase.store(embedder_phase::ERROR, Ordering::Relaxed);
+            crate::queue::emit_status(app);
+            Err(e)
+        }
+    }
 }
 
 /// Embed a batch of texts. Blocking.

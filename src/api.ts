@@ -68,6 +68,7 @@ export const api = {
   setSettings: (settings: AppSettings) => invoke<void>("set_settings", { settings }),
   reindexAll: () => invoke<QueueStatus>("reindex_all"),
   queueStatus: () => invoke<QueueStatus>("queue_status"),
+  listQueuedNotes: () => invoke<Note[]>("list_queued_notes"),
   notifyActivity: () => invoke<void>("notify_activity"),
   getDataDir: () => invoke<string>("get_data_dir"),
   saveImage: (srcPath: string) => invoke<string>("save_image", { srcPath }),
