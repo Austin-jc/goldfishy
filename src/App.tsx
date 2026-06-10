@@ -3,15 +3,18 @@ import { listen } from "@tauri-apps/api/event";
 import { useStore } from "./store";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
+import ActionPanel from "./components/ActionPanel";
+import ReminderBanners from "./components/ReminderBanners";
 import SettingsModal from "./components/SettingsModal";
 import CommandPalette from "./components/CommandPalette";
 import Toasts from "./components/Toasts";
-import type { Note, QueueStatus } from "./types";
+import type { ActionItem, Note, QueueStatus } from "./types";
 
 export default function App() {
   const ready = useStore((s) => s.ready);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const paletteOpen = useStore((s) => s.paletteOpen);
+  const actionsOpen = useStore((s) => s.actionsOpen);
 
   useEffect(() => {
     void useStore.getState().init();
@@ -30,6 +33,14 @@ export default function App() {
       listen("sweep-done", () => {
         useStore.getState().toast("Sync / re-index complete", "success");
         void useStore.getState().refreshNotes();
+      }),
+      listen("action-items-changed", () => {
+        void useStore.getState().refreshActions();
+      }),
+      listen<ActionItem>("action-due", (e) => {
+        const st = useStore.getState();
+        void st.refreshActions();
+        if (st.settings?.notify_in_app !== false) st.pushReminder(e.payload);
       }),
     ];
     return () => {
@@ -74,8 +85,10 @@ export default function App() {
     <div className="flex h-full">
       <Sidebar />
       <Editor />
+      {actionsOpen && <ActionPanel />}
       {settingsOpen && <SettingsModal />}
       {paletteOpen && <CommandPalette />}
+      <ReminderBanners />
       <Toasts />
     </div>
   );

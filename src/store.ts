@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { api, setDataDir } from "./api";
 import { applyTheme, DEFAULT_THEME } from "./themes";
 import type {
+  ActionItem,
   AppSettings,
   Folder,
   Note,
@@ -37,6 +38,10 @@ interface Store {
   sidebarCollapsed: boolean;
   theme: string;
   toasts: Toast[];
+  actionsOpen: boolean;
+  actionItems: ActionItem[];
+  /** Due reminders currently shown as in-app banners. */
+  reminders: ActionItem[];
 
   init: () => Promise<void>;
   refreshNotes: () => Promise<void>;
@@ -58,6 +63,10 @@ interface Store {
   setPaletteOpen: (b: boolean) => void;
   toggleSidebar: () => void;
   setTheme: (theme: string) => void;
+  setActionsOpen: (b: boolean) => void;
+  refreshActions: () => Promise<void>;
+  pushReminder: (item: ActionItem) => void;
+  dismissReminder: (id: string) => void;
   toast: (text: string, kind?: Toast["kind"]) => void;
   dismissToast: (id: number) => void;
 }
@@ -80,6 +89,9 @@ export const useStore = create<Store>((set, get) => ({
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   toasts: [],
+  actionsOpen: false,
+  actionItems: [],
+  reminders: [],
 
   init: async () => {
     const [dir, settings, folders, tags, queue] = await Promise.all([
@@ -93,6 +105,7 @@ export const useStore = create<Store>((set, get) => ({
     set({ settings, folders, tags, queue });
     await get().refreshNotes();
     set({ ready: true });
+    void get().refreshActions();
   },
 
   refreshNotes: async () => {
@@ -190,6 +203,25 @@ export const useStore = create<Store>((set, get) => ({
     applyTheme(theme);
     set({ theme });
   },
+
+  setActionsOpen: (actionsOpen) => set({ actionsOpen }),
+
+  refreshActions: async () => {
+    try {
+      set({ actionItems: await api.listActionItems() });
+    } catch {
+      // Backend may not be ready during startup; the next event refreshes.
+    }
+  },
+
+  pushReminder: (item) =>
+    set((s) =>
+      s.reminders.some((r) => r.id === item.id)
+        ? s
+        : { reminders: [...s.reminders, item] },
+    ),
+  dismissReminder: (id) =>
+    set((s) => ({ reminders: s.reminders.filter((r) => r.id !== id) })),
 
   toast: (text, kind = "info") => {
     const id = toastSeq++;

@@ -353,6 +353,33 @@ export default function SettingsModal() {
             </div>
           </section>
 
+          {/* ---------------- Reminders & action items ---------------- */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Reminders &amp; Action Items
+            </h3>
+            <div className="space-y-3 rounded-lg border border-stone-800 p-3">
+              <ToggleRow
+                label="Extract action items automatically"
+                desc="The AI proposes tasks and follow-ups as it reads your notes (needs an AI engine)."
+                value={local.extract_actions}
+                onChange={(v) => set("extract_actions", v)}
+              />
+              <ToggleRow
+                label="In-app reminder banners"
+                desc="Show a banner inside the app when a scheduled item comes due."
+                value={local.notify_in_app}
+                onChange={(v) => set("notify_in_app", v)}
+              />
+              <ToggleRow
+                label="System notifications"
+                desc="Also fire a native desktop notification, so reminders reach you outside the app."
+                value={local.notify_system}
+                onChange={(v) => set("notify_system", v)}
+              />
+            </div>
+          </section>
+
           {/* ---------------- Data ---------------- */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
@@ -432,6 +459,41 @@ const inputCls =
   "rounded-md border border-stone-700 bg-stone-950 px-2 py-1.5 text-xs text-stone-200 outline-none focus:border-clay-600 w-full";
 const btnCls =
   "flex items-center gap-1.5 rounded-md border border-stone-700 px-3 py-1.5 text-xs text-stone-300 hover:border-stone-500 hover:text-stone-100 disabled:opacity-50";
+
+function ToggleRow({
+  label,
+  desc,
+  value,
+  onChange,
+}: {
+  label: string;
+  desc: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-xs text-stone-200">{label}</p>
+        <p className="text-[10px] text-stone-500">{desc}</p>
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        role="switch"
+        aria-checked={value}
+        className={`h-5 w-9 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors ${
+          value ? "bg-clay-600" : "bg-stone-700"
+        }`}
+      >
+        <span
+          className={`block h-4 w-4 rounded-full bg-white transition-transform ${
+            value ? "translate-x-4" : ""
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
 
 function Field({
   label,

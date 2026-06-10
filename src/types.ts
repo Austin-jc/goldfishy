@@ -55,6 +55,24 @@ export interface AppSettings {
   model_path: string;
   sidecar_port: number;
   hf_repo: string;
+  extract_actions: boolean;
+  notify_in_app: boolean;
+  notify_system: boolean;
+}
+
+export type ActionStatus = "proposed" | "scheduled" | "done" | "dismissed";
+
+export interface ActionItem {
+  id: string;
+  note_id: string | null;
+  note_title: string;
+  text: string;
+  category: string;
+  status: ActionStatus;
+  due_at: number | null;
+  notified_at: number | null;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface CollectionSummary {

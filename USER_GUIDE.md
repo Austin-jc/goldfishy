@@ -88,6 +88,19 @@ Once AI is enabled (next section), GoldFishy can:
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
 - • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and it gets reorganized into tidy bullet points.
 - 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it.
+- ✅ **Action items & reminders** — the AI also spots tasks and follow-ups in your notes ("call the dentist", "send the report by Friday") and proposes them in the **Actions panel** (the bell at the top of the left panel). Nothing is scheduled until you accept it.
+
+### The Actions panel (the bell 🔔)
+
+Click the bell to open the panel. It has three groups:
+
+- **Proposed** — items the AI found, waiting for your review. Accept (✓) to schedule them, or dismiss (✗) — dismissed items are never re-proposed.
+- **Scheduled** — your active list. Click the little calendar chip to set or change a reminder time; when it comes due you get a banner inside the app and (optionally) a normal desktop notification with **Done / Snooze 1h / Open note** at hand.
+- **Completed** — what you've finished, collapsed out of the way.
+
+Every item has a **category** chip (work, errands, health…) — the AI suggests one, and you can click the chip to change it. Use the category chips at the top of the panel to filter. You can also type into "Add an action item…" to add one yourself — no AI needed.
+
+All of it is configurable in **Settings → Reminders & Action Items**: automatic extraction, in-app banners, and system notifications each have their own switch.
 
 The app is careful about your battery and your typing: AI work only happens in the background **after you stop typing**, and it never interrupts you with pop-ups.
 

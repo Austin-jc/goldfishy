@@ -1,5 +1,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type {
+  ActionItem,
+  ActionStatus,
   AppSettings,
   CollectionSummary,
   Folder,
@@ -62,6 +64,24 @@ export const api = {
     invoke<CollectionSummary | null>("get_collection_summary", { kind, key }),
   testLlm: () => invoke<string>("test_llm"),
   downloadModel: (repo: string) => invoke<string>("download_model", { repo }),
+
+  // action items & reminders
+  listActionItems: () => invoke<ActionItem[]>("list_action_items"),
+  extractActions: (noteId: string) =>
+    invoke<ActionItem[]>("extract_actions_note", { noteId }),
+  createActionItem: (
+    text: string,
+    category: string | null,
+    dueAt: number | null,
+    noteId: string | null,
+  ) => invoke<ActionItem>("create_action_item", { text, category, dueAt, noteId }),
+  setActionStatus: (id: string, status: ActionStatus) =>
+    invoke<ActionItem>("set_action_status", { id, status }),
+  setActionCategory: (id: string, category: string) =>
+    invoke<ActionItem>("set_action_category", { id, category }),
+  setActionDue: (id: string, dueAt: number | null) =>
+    invoke<ActionItem>("set_action_due", { id, dueAt }),
+  deleteActionItem: (id: string) => invoke<void>("delete_action_item", { id }),
 
   // settings & system
   getSettings: () => invoke<AppSettings>("get_settings"),

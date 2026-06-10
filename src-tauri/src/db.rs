@@ -5,7 +5,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Manager};
 
-use crate::models::{AppSettings, Folder, Note, NoteTag, TagCount};
+use crate::models::{ActionItem, AppSettings, Folder, Note, NoteTag, TagCount};
 
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -93,6 +93,22 @@ fn migrate(conn: &Connection) -> Result<()> {
             updated_at INTEGER NOT NULL,
             PRIMARY KEY (kind, key)
         );
+
+        CREATE TABLE IF NOT EXISTS action_items (
+            id TEXT PRIMARY KEY,
+            note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'general',
+            status TEXT NOT NULL DEFAULT 'proposed',
+            due_at INTEGER,
+            notified_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_actions_status ON action_items(status);
+        CREATE INDEX IF NOT EXISTS idx_actions_due ON action_items(due_at);
+        CREATE INDEX IF NOT EXISTS idx_actions_note ON action_items(note_id);
         "#,
     )?;
     Ok(())
@@ -256,6 +272,47 @@ pub fn folder_with_descendants(conn: &Connection, folder_id: &str) -> Result<Vec
     )?;
     let rows = stmt.query_map(params![folder_id], |r| r.get::<_, String>(0))?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+// ------------------------------------------------------------- action items
+
+const ACTION_COLS: &str = "a.id, a.note_id, COALESCE(n.title, ''), a.text, a.category, a.status, a.due_at, a.notified_at, a.created_at, a.updated_at";
+
+fn row_to_action(row: &rusqlite::Row) -> rusqlite::Result<ActionItem> {
+    Ok(ActionItem {
+        id: row.get(0)?,
+        note_id: row.get(1)?,
+        note_title: row.get(2)?,
+        text: row.get(3)?,
+        category: row.get(4)?,
+        status: row.get(5)?,
+        due_at: row.get(6)?,
+        notified_at: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+pub fn list_action_items(conn: &Connection) -> Result<Vec<ActionItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ACTION_COLS} FROM action_items a
+         LEFT JOIN notes n ON n.id = a.note_id
+         WHERE a.status != 'dismissed'
+         ORDER BY (a.due_at IS NULL), a.due_at ASC, a.created_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_action)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn get_action_item(conn: &Connection, id: &str) -> Result<ActionItem> {
+    Ok(conn.query_row(
+        &format!(
+            "SELECT {ACTION_COLS} FROM action_items a
+             LEFT JOIN notes n ON n.id = a.note_id WHERE a.id = ?1"
+        ),
+        params![id],
+        row_to_action,
+    )?)
 }
 
 pub fn load_settings(conn: &Connection) -> AppSettings {

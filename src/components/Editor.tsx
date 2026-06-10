@@ -21,6 +21,7 @@ import {
   Heading2,
   Italic,
   List,
+  ListChecks,
   ListOrdered,
   Loader2,
   Plus,
@@ -63,7 +64,7 @@ function EditorInner({ noteId }: { noteId: string }) {
   const folders = useStore((s) => s.folders);
   const settings = useStore((s) => s.settings);
   const [title, setTitle] = useState(note.title);
-  const [aiWorking, setAiWorking] = useState<"" | "bullets" | "organize">("");
+  const [aiWorking, setAiWorking] = useState<"" | "bullets" | "organize" | "actions">("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
 
@@ -174,6 +175,26 @@ function EditorInner({ noteId }: { noteId: string }) {
     }
   };
 
+  const runActions = async () => {
+    await saveNow();
+    setAiWorking("actions");
+    try {
+      const found = await api.extractActions(noteId);
+      await useStore.getState().refreshActions();
+      useStore.getState().setActionsOpen(true);
+      useStore.getState().toast(
+        found.length
+          ? `${found.length} action item${found.length === 1 ? "" : "s"} proposed`
+          : "No open action items found",
+        "success",
+      );
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setAiWorking("");
+    }
+  };
+
   const ghostBtn =
     "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50";
 
@@ -228,6 +249,19 @@ function EditorInner({ noteId }: { noteId: string }) {
                   <Tags size={12} />
                 )}
                 Organize
+              </button>
+              <button
+                onClick={() => void runActions()}
+                disabled={aiWorking !== ""}
+                title="Extract action items & follow-ups from this note"
+                className={ghostBtn + " hover:text-clay-300"}
+              >
+                {aiWorking === "actions" ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ListChecks size={12} />
+                )}
+                Actions
               </button>
             </>
           )}

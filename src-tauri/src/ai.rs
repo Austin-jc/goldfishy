@@ -10,8 +10,14 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
 
 use crate::db::{self, now_ms};
-use crate::models::{AppSettings, Note};
+use crate::models::{ActionItem, AppSettings, Note};
 use crate::state::{AppState, SidecarProc};
+
+/// Context window we ask the backend to use. Long-note tasks overflow the
+/// common 4096 default — `bulletify` sends ~12k chars (~4k tokens) and
+/// `summarize_collection` ~16k chars (~5k tokens) — which gets silently
+/// truncated. 8192 covers every prompt with room for the response.
+const LLM_NUM_CTX: u32 = 8192;
 
 pub fn truncate_chars(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
@@ -100,6 +106,8 @@ pub async fn ensure_sidecar(app: &AppHandle, settings: &AppSettings) -> Result<S
             "127.0.0.1",
             "--port",
             &settings.sidecar_port.to_string(),
+            "-c",
+            &LLM_NUM_CTX.to_string(),
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -152,7 +160,17 @@ pub async fn kill_sidecar(app: &AppHandle) {
 
 /// One-shot chat completion against whichever backend is configured.
 /// Works with llama-server, Ollama, LM Studio, vLLM — anything OpenAI-compatible.
-pub async fn chat(app: &AppHandle, system: &str, user: &str, max_tokens: u32) -> Result<String> {
+///
+/// `response_format` is an optional OpenAI-style `response_format` value (e.g. a
+/// `json_schema`) for backends that support constrained decoding; servers that
+/// don't recognise it ignore it, so callers should still validate the reply.
+pub async fn chat(
+    app: &AppHandle,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    response_format: Option<serde_json::Value>,
+) -> Result<String> {
     let settings = current_settings(app);
     let (base, model, api_key) = match settings.llm_backend.as_str() {
         "external" => {
@@ -174,20 +192,29 @@ pub async fn chat(app: &AppHandle, system: &str, user: &str, max_tokens: u32) ->
         _ => bail!("No LLM backend configured. Open Settings → AI Engine to choose one."),
     };
 
+    let mut body = json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": 0.3,
+        "max_tokens": max_tokens,
+        // Ollama-specific hint so long prompts aren't truncated to its 4096
+        // default. Ignored by servers (llama-server, vLLM, …) that size the
+        // context window at load time instead.
+        "num_ctx": LLM_NUM_CTX,
+    });
+    if let Some(rf) = response_format {
+        body["response_format"] = rf;
+    }
+
     let state = app.state::<AppState>();
     let mut req = state
         .http
         .post(format!("{base}/v1/chat/completions"))
         .timeout(Duration::from_secs(300))
-        .json(&json!({
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": 0.3,
-            "max_tokens": max_tokens,
-        }));
+        .json(&body);
     if !api_key.trim().is_empty() {
         req = req.bearer_auth(api_key.trim());
     }
@@ -235,7 +262,27 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
         truncate_chars(&content, 6000),
     );
 
-    let reply = chat(app, system, &user, 250).await?;
+    // Constrain the reply to our exact shape on backends that support it
+    // (Ollama structured outputs, llama.cpp grammars). On backends that ignore
+    // `response_format`, the prompt above plus `extract_json` still apply.
+    let schema = json!({
+        "type": "json_schema",
+        "json_schema": {
+            "name": "note_meta",
+            "strict": true,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "folder": {"type": ["string", "null"]},
+                },
+                "required": ["tags", "folder"],
+                "additionalProperties": false,
+            },
+        },
+    });
+
+    let reply = chat(app, system, &user, 250, Some(schema)).await?;
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
 
@@ -290,6 +337,170 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
     Ok(db::get_note(&db, note_id)?)
 }
 
+fn normalize_action_text(s: &str) -> String {
+    s.trim()
+        .trim_end_matches(['.', '!'])
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Parse an LLM-provided due hint: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM",
+/// interpreted in local time (date-only defaults to 09:00).
+fn parse_due(s: &str) -> Option<i64> {
+    use chrono::{Local, NaiveDate, NaiveDateTime, TimeZone};
+    let t = s.trim();
+    if t.is_empty() || t.eq_ignore_ascii_case("null") {
+        return None;
+    }
+    let naive: NaiveDateTime = NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M")
+        .ok()
+        .or_else(|| {
+            NaiveDate::parse_from_str(t, "%Y-%m-%d")
+                .ok()
+                .and_then(|d| d.and_hms_opt(9, 0, 0))
+        })?;
+    Local
+        .from_local_datetime(&naive)
+        .single()
+        .map(|dt| dt.timestamp_millis())
+}
+
+/// Extract action items / follow-ups from a note. New findings land as
+/// `proposed`; items the user already accepted, completed or dismissed are
+/// never re-proposed, and proposals that disappear from the note are pruned.
+pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<ActionItem>> {
+    let state = app.state::<AppState>();
+    let (title, content, categories) = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        let mut stmt = db.prepare("SELECT DISTINCT category FROM action_items ORDER BY category")?;
+        let cats: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        (note.title, note.content, cats)
+    };
+    if title.trim().is_empty() && content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
+    let cats_json = serde_json::to_string(&categories)?;
+    let system = "You extract action items from personal notes. Reply with ONLY valid JSON. No prose, no markdown fences.";
+    let user = format!(
+        "Today is {today}. Extract up to 6 concrete action items (tasks, follow-ups, reminders) \
+         from the note below. Only include real actions the author still needs to do — not facts, \
+         ideas, or completed work. If there are none, return an empty list.\n\
+         For each item give: \"text\" (short imperative phrase), \"category\" (one or two lowercase \
+         words; reuse one of {cats_json} when it fits, else invent a sensible one like \"work\", \
+         \"errands\", \"health\", \"follow-up\"), and \"due\" — \"YYYY-MM-DD\" or \"YYYY-MM-DD HH:MM\" \
+         if the note implies a date or deadline (resolve relative phrases like \"tomorrow\" or \
+         \"next friday\" using today's date), else null.\n\n\
+         NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
+         Reply with JSON exactly like: {{\"items\": [{{\"text\": \"...\", \"category\": \"...\", \"due\": null}}]}}",
+        truncate_chars(&title, 200),
+        truncate_chars(&content, 8000),
+    );
+
+    let schema = json!({
+        "type": "json_schema",
+        "json_schema": {
+            "name": "action_items",
+            "strict": true,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "text": {"type": "string"},
+                                "category": {"type": "string"},
+                                "due": {"type": ["string", "null"]},
+                            },
+                            "required": ["text", "category", "due"],
+                            "additionalProperties": false,
+                        },
+                    },
+                },
+                "required": ["items"],
+                "additionalProperties": false,
+            },
+        },
+    });
+
+    let reply = chat(app, system, &user, 600, Some(schema)).await?;
+    let parsed =
+        extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
+    let extracted: Vec<(String, String, Option<i64>)> = parsed["items"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    let text = v["text"].as_str()?.trim().to_string();
+                    if text.is_empty() {
+                        return None;
+                    }
+                    let category = v["category"]
+                        .as_str()
+                        .map(normalize_tag)
+                        .filter(|c| !c.is_empty())
+                        .unwrap_or_else(|| "general".to_string());
+                    let due = v["due"].as_str().and_then(parse_due);
+                    Some((truncate_chars(&text, 200), category, due))
+                })
+                .take(6)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let now = now_ms();
+    {
+        let db = state.db.lock().unwrap();
+        let existing: Vec<(String, String, String)> = {
+            let mut stmt =
+                db.prepare("SELECT id, text, status FROM action_items WHERE note_id = ?1")?;
+            let rows = stmt.query_map(rusqlite::params![note_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        let new_keys: Vec<String> = extracted
+            .iter()
+            .map(|(t, _, _)| normalize_action_text(t))
+            .collect();
+
+        // Prune proposals that no longer appear in the note.
+        for (id, text, status) in &existing {
+            if status == "proposed" && !new_keys.contains(&normalize_action_text(text)) {
+                db.execute("DELETE FROM action_items WHERE id = ?1", rusqlite::params![id])?;
+            }
+        }
+        // Insert genuinely new items (never re-propose known ones, incl. dismissed).
+        for (text, category, due) in &extracted {
+            let key = normalize_action_text(text);
+            if existing.iter().any(|(_, t, _)| normalize_action_text(t) == key) {
+                continue;
+            }
+            db.execute(
+                "INSERT INTO action_items(id, note_id, text, category, status, due_at, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 'proposed', ?5, ?6, ?6)",
+                rusqlite::params![uuid::Uuid::new_v4().to_string(), note_id, text, category, due, now],
+            )?;
+        }
+    }
+
+    let _ = app.emit("action-items-changed", ());
+    let db = state.db.lock().unwrap();
+    Ok(db::list_action_items(&db)?
+        .into_iter()
+        .filter(|a| a.note_id.as_deref() == Some(note_id) && a.status == "proposed")
+        .collect())
+}
+
 /// Restructure stream-of-consciousness text into concise markdown bullets.
 pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
     let state = app.state::<AppState>();
@@ -310,7 +521,7 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
         truncate_chars(&content, 12000),
     );
 
-    let reply = chat(app, system, &user, 2048).await?;
+    let reply = chat(app, system, &user, 2048, None).await?;
     let new_content = strip_fences(&reply);
     if new_content.trim().is_empty() {
         bail!("LLM returned an empty result");
@@ -364,7 +575,7 @@ pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Res
          decisions and open items across this collection of {} notes:\n\n{corpus}",
         notes.len()
     );
-    let summary = chat(app, system, &user, 500).await?;
+    let summary = chat(app, system, &user, 500, None).await?;
     let summary = strip_fences(&summary);
 
     let db = state.db.lock().unwrap();

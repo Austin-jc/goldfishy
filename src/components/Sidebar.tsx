@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -102,6 +103,7 @@ export default function Sidebar() {
           />
         )}
         <span className="ml-auto flex items-center gap-0.5">
+          <ActionsBell />
           <button
             onClick={() => setSettingsOpen(true)}
             className="cursor-pointer rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-stone-800 hover:text-stone-200"
@@ -255,6 +257,38 @@ export default function Sidebar() {
         title="Drag to resize"
       />
     </aside>
+  );
+}
+
+function ActionsBell() {
+  const actionsOpen = useStore((s) => s.actionsOpen);
+  const setActionsOpen = useStore((s) => s.setActionsOpen);
+  const items = useStore((s) => s.actionItems);
+  // Attention = proposals awaiting review + overdue scheduled reminders.
+  const now = Date.now();
+  const badge = items.filter(
+    (i) =>
+      i.status === "proposed" ||
+      (i.status === "scheduled" && i.due_at !== null && i.due_at <= now),
+  ).length;
+
+  return (
+    <button
+      onClick={() => setActionsOpen(!actionsOpen)}
+      className={`relative cursor-pointer rounded-lg p-1.5 transition-colors ${
+        actionsOpen
+          ? "bg-clay-600/20 text-clay-300"
+          : "text-stone-500 hover:bg-stone-800 hover:text-stone-200"
+      }`}
+      title="Action items & reminders"
+    >
+      <Bell size={15} />
+      {badge > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-clay-600 px-0.5 text-[8px] font-semibold text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+    </button>
   );
 }
 

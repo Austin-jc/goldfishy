@@ -40,6 +40,20 @@ pub struct TagCount {
 }
 
 #[derive(Serialize, Clone, Debug)]
+pub struct ActionItem {
+    pub id: String,
+    pub note_id: Option<String>,
+    pub note_title: String,
+    pub text: String,
+    pub category: String,
+    pub status: String, // proposed | scheduled | done | dismissed
+    pub due_at: Option<i64>,
+    pub notified_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Clone, Debug)]
 pub struct QueueStatus {
     pub embed_stale: i64,
     pub embed_pending: i64,
@@ -64,6 +78,12 @@ pub struct AppSettings {
     pub model_path: String,
     pub sidecar_port: u16,
     pub hf_repo: String,
+    /// Extract action items automatically as part of the LLM pipeline.
+    pub extract_actions: bool,
+    /// Show due reminders as in-app banners.
+    pub notify_in_app: bool,
+    /// Fire native system notifications for due reminders.
+    pub notify_system: bool,
 }
 
 impl Default for AppSettings {
@@ -80,6 +100,9 @@ impl Default for AppSettings {
             model_path: "".into(),
             sidecar_port: 8757,
             hf_repo: "".into(),
+            extract_actions: true,
+            notify_in_app: true,
+            notify_system: true,
         }
     }
 }

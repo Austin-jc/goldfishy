@@ -11,7 +11,7 @@ use crate::ai;
 use crate::db::{self, now_ms};
 use crate::diff;
 use crate::embed;
-use crate::models::{AppSettings, Folder, Note, QueueStatus, TagCount};
+use crate::models::{ActionItem, AppSettings, Folder, Note, QueueStatus, TagCount};
 use crate::queue;
 use crate::state::AppState;
 
@@ -398,6 +398,7 @@ pub async fn test_llm(app: AppHandle) -> CmdResult<String> {
         "You are a connectivity test.",
         "Reply with the single word: OK",
         16,
+        None,
     )
     .await
     .map_err(eanyhow)
@@ -406,6 +407,110 @@ pub async fn test_llm(app: AppHandle) -> CmdResult<String> {
 #[tauri::command]
 pub async fn download_model(app: AppHandle, repo: String) -> CmdResult<String> {
     ai::download_hf_model(&app, &repo).await.map_err(eanyhow)
+}
+
+// ---------------------------------------------------------------- action items
+
+#[tauri::command]
+pub async fn list_action_items(app: AppHandle) -> CmdResult<Vec<ActionItem>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db::list_action_items(&db).map_err(eanyhow)
+}
+
+/// Manually run extraction for one note; returns the resulting proposals.
+#[tauri::command]
+pub async fn extract_actions_note(app: AppHandle, note_id: String) -> CmdResult<Vec<ActionItem>> {
+    ai::extract_actions(&app, &note_id).await.map_err(eanyhow)
+}
+
+/// Manually add an action item (goes straight to `scheduled`).
+#[tauri::command]
+pub async fn create_action_item(
+    app: AppHandle,
+    text: String,
+    category: Option<String>,
+    due_at: Option<i64>,
+    note_id: Option<String>,
+) -> CmdResult<ActionItem> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("Action text is empty".into());
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    let category = category
+        .map(|c| c.trim().to_lowercase())
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(|| "general".to_string());
+    db.execute(
+        "INSERT INTO action_items(id, note_id, text, category, status, due_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'scheduled', ?5, ?6, ?6)",
+        params![id, note_id, text, category, due_at, now],
+    )
+    .map_err(estr)?;
+    let _ = app.emit("action-items-changed", ());
+    db::get_action_item(&db, &id).map_err(eanyhow)
+}
+
+/// Accept / complete / dismiss an item.
+#[tauri::command]
+pub async fn set_action_status(app: AppHandle, id: String, status: String) -> CmdResult<ActionItem> {
+    if !["proposed", "scheduled", "done", "dismissed"].contains(&status.as_str()) {
+        return Err(format!("Invalid status: {status}"));
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE action_items SET status = ?1, updated_at = ?2 WHERE id = ?3",
+        params![status, now_ms(), id],
+    )
+    .map_err(estr)?;
+    let _ = app.emit("action-items-changed", ());
+    db::get_action_item(&db, &id).map_err(eanyhow)
+}
+
+#[tauri::command]
+pub async fn set_action_category(app: AppHandle, id: String, category: String) -> CmdResult<ActionItem> {
+    let category = category.trim().to_lowercase();
+    if category.is_empty() {
+        return Err("Category is empty".into());
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE action_items SET category = ?1, updated_at = ?2 WHERE id = ?3",
+        params![category, now_ms(), id],
+    )
+    .map_err(estr)?;
+    let _ = app.emit("action-items-changed", ());
+    db::get_action_item(&db, &id).map_err(eanyhow)
+}
+
+/// Set or clear the due time. Changing it re-arms the notification.
+#[tauri::command]
+pub async fn set_action_due(app: AppHandle, id: String, due_at: Option<i64>) -> CmdResult<ActionItem> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE action_items SET due_at = ?1, notified_at = NULL, updated_at = ?2 WHERE id = ?3",
+        params![due_at, now_ms(), id],
+    )
+    .map_err(estr)?;
+    let _ = app.emit("action-items-changed", ());
+    db::get_action_item(&db, &id).map_err(eanyhow)
+}
+
+#[tauri::command]
+pub async fn delete_action_item(app: AppHandle, id: String) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute("DELETE FROM action_items WHERE id = ?1", params![id])
+        .map_err(estr)?;
+    let _ = app.emit("action-items-changed", ());
+    Ok(())
 }
 
 // ---------------------------------------------------------------- settings & system

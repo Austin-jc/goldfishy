@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{self, now_ms};
 use crate::embed;
-use crate::models::QueueStatus;
+use crate::models::{ActionItem, QueueStatus};
 use crate::state::AppState;
 
 /// Spawn the background engine: a 1s tick loop that drains
@@ -56,12 +56,71 @@ fn emit_note(app: &AppHandle, note_id: &str) {
     }
 }
 
+/// Fire notifications for scheduled action items whose due time has passed.
+fn check_due_reminders(app: &AppHandle, notify_system: bool) -> Result<()> {
+    let state = app.state::<AppState>();
+    let now = now_ms();
+    let due: Vec<ActionItem> = {
+        let db = state.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT a.id, a.note_id, COALESCE(n.title, ''), a.text, a.category, a.status,
+                    a.due_at, a.notified_at, a.created_at, a.updated_at
+             FROM action_items a LEFT JOIN notes n ON n.id = a.note_id
+             WHERE a.status = 'scheduled' AND a.due_at IS NOT NULL
+               AND a.due_at <= ?1 AND a.notified_at IS NULL",
+        )?;
+        let rows = stmt.query_map(params![now], |r| {
+            Ok(ActionItem {
+                id: r.get(0)?,
+                note_id: r.get(1)?,
+                note_title: r.get(2)?,
+                text: r.get(3)?,
+                category: r.get(4)?,
+                status: r.get(5)?,
+                due_at: r.get(6)?,
+                notified_at: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
+            })
+        })?;
+        let due: Vec<ActionItem> = rows.filter_map(|r| r.ok()).collect();
+        for item in &due {
+            db.execute(
+                "UPDATE action_items SET notified_at = ?1 WHERE id = ?2",
+                params![now, item.id],
+            )?;
+        }
+        due
+    };
+
+    for item in due {
+        if notify_system {
+            use tauri_plugin_notification::NotificationExt;
+            let _ = app
+                .notification()
+                .builder()
+                .title("GoldFishy reminder")
+                .body(&item.text)
+                .show();
+        }
+        // The frontend decides whether to show an in-app banner.
+        let _ = app.emit("action-due", &item);
+    }
+    Ok(())
+}
+
 async fn tick(app: &AppHandle) -> Result<()> {
     let state = app.state::<AppState>();
     let settings = {
         let db = state.db.lock().unwrap();
         db::load_settings(&db)
     };
+
+    // Reminders fire regardless of automation mode.
+    if let Err(e) = check_due_reminders(app, settings.notify_system) {
+        eprintln!("[reminders] {e:#}");
+    }
+
     let sweep = state.sweep_active.load(Ordering::Relaxed);
     let auto = settings.automation_mode == "auto";
     if !auto && !sweep {
@@ -168,6 +227,11 @@ async fn tick(app: &AppHandle) -> Result<()> {
                 match crate::ai::auto_tag_and_route(app, &id).await {
                     Ok(note) => {
                         let _ = app.emit("note-updated", note);
+                        if settings.extract_actions {
+                            if let Err(e) = crate::ai::extract_actions(app, &id).await {
+                                eprintln!("[actions] extraction failed for {id}: {e:#}");
+                            }
+                        }
                     }
                     Err(e) => {
                         {

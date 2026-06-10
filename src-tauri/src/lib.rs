@@ -18,6 +18,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let conn = db::open(app.handle())?;
             app.manage(AppState {
@@ -72,6 +73,13 @@ pub fn run() {
             commands::reindex_all,
             commands::queue_status,
             commands::list_queued_notes,
+            commands::list_action_items,
+            commands::extract_actions_note,
+            commands::create_action_item,
+            commands::set_action_status,
+            commands::set_action_category,
+            commands::set_action_due,
+            commands::delete_action_item,
             commands::notify_activity,
             commands::get_data_dir,
             commands::save_image,
