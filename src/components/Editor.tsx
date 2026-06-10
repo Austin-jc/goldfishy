@@ -10,6 +10,8 @@ import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
 import { Markdown } from "tiptap-markdown";
 import { common, createLowlight } from "lowlight";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -26,6 +28,7 @@ import {
   List,
   ListChecks,
   ListOrdered,
+  ListTodo,
   Loader2,
   Pin,
   PinOff,
@@ -122,6 +125,8 @@ function EditorInner({ noteId }: { noteId: string }) {
       LocalImage,
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: "Start writing… markdown works." }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
       Markdown.configure({ html: false, linkify: true }),
       TermHighlight,
     ],
@@ -715,6 +720,13 @@ function SelectionMenu({ editor }: { editor: TiptapEditor }) {
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
           <ListOrdered size={13} />
+        </Btn>
+        <Btn
+          title="Task list (checkboxes)"
+          active={editor.isActive("taskList")}
+          onClick={() => editor.chain().focus().toggleTaskList().run()}
+        >
+          <ListTodo size={13} />
         </Btn>
         <Btn
           title="Quote"
