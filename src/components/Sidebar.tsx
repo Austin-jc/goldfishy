@@ -11,12 +11,14 @@ import {
   Folder as FolderIcon,
   FolderOpen,
   FolderPlus,
+  Copy,
   Inbox,
   Loader2,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Pin,
+  PinOff,
   Plus,
   Settings,
   Sparkles,
@@ -26,6 +28,7 @@ import {
 import { api } from "../api";
 import { useStore } from "../store";
 import { relativeTime, stripMarkdown } from "../utils";
+import ContextMenu from "./ContextMenu";
 import GoldfishLogo from "./GoldfishLogo";
 import { NoteItem, SearchBar, SummaryBar } from "./NoteList";
 import type { Folder, Note } from "../types";
@@ -780,10 +783,28 @@ function FolderNameInput({
 const PREVIEW_DELAY_MS = 450;
 const PREVIEW_W = 264;
 
+/** Copy a note (same folder, same content) and open the copy. */
+async function duplicateNote(note: Note) {
+  const st = useStore.getState();
+  try {
+    const copy = await api.createNote(note.folder_id);
+    await api.updateNote(
+      copy.id,
+      note.title ? `${note.title} (copy)` : "",
+      note.content,
+    );
+    await st.refreshNotes();
+    await st.selectNote(copy.id);
+  } catch (e) {
+    st.toast(String(e), "error");
+  }
+}
+
 /** A note leaf inside the explorer tree: status icons + hover preview card. */
 function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
   const active = useStore((s) => s.selectedNote?.id === note.id);
   const [preview, setPreview] = useState<{ left: number; top: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const working = note.llm_status === "PENDING" || note.embedding_status === "PENDING";
@@ -817,6 +838,11 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
         }}
         onMouseEnter={startPreview}
         onMouseLeave={stopPreview}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          stopPreview();
+          setMenu({ x: e.clientX, y: e.clientY });
+        }}
         draggable
         onDragStart={(e) => {
           stopPreview();
@@ -887,6 +913,44 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
           )}
         </div>
       )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: "Open",
+              icon: <FileText size={13} />,
+              onClick: () => void useStore.getState().selectNote(note.id),
+            },
+            {
+              label: note.pinned ? "Unpin" : "Pin",
+              icon: note.pinned ? <PinOff size={13} /> : <Pin size={13} />,
+              onClick: async () => {
+                try {
+                  const updated = await api.setNotePinned(note.id, !note.pinned);
+                  useStore.getState().applyNoteUpdate(updated);
+                } catch (e) {
+                  useStore.getState().toast(String(e), "error");
+                }
+              },
+            },
+            {
+              label: "Duplicate",
+              icon: <Copy size={13} />,
+              onClick: () => void duplicateNote(note),
+            },
+            {
+              label: "Delete",
+              icon: <Trash2 size={13} />,
+              danger: true,
+              confirm: true,
+              onClick: () => void useStore.getState().deleteNote(note.id),
+            },
+          ]}
+        />
+      )}
     </>
   );
 }
@@ -906,6 +970,14 @@ function FolderNode({
   const [addingChild, setAddingChild] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dropHover, setDropHover] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const deleteFolder = async () => {
+    await api.deleteFolder(folder.id);
+    await useStore.getState().refreshFolders();
+    await useStore.getState().refreshNotes();
+    if (active) selectView({ kind: "all", key: null });
+  };
 
   const children = ctx.childrenOf.get(folder.id) ?? [];
   const folderNotes = ctx.notesByFolder.get(folder.id) ?? [];
@@ -955,6 +1027,11 @@ function FolderNode({
           setDropHover(false);
           ctx.setExpanded(folder.id, true);
           void handleTreeDrop(e, folder.id);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenu({ x: e.clientX, y: e.clientY });
         }}
         className={`group flex items-center gap-1 rounded-lg px-1 py-1 text-sm transition-colors ${
           dropHover
@@ -1029,10 +1106,7 @@ function FolderNode({
                 setTimeout(() => setConfirmDelete(false), 2500);
                 return;
               }
-              await api.deleteFolder(folder.id);
-              await useStore.getState().refreshFolders();
-              await useStore.getState().refreshNotes();
-              if (active) selectView({ kind: "all", key: null });
+              await deleteFolder();
             }}
             className={
               confirmDelete
@@ -1068,6 +1142,40 @@ function FolderNode({
             <TreeNoteRow key={n.id} note={n} depth={depth + 1} />
           ))}
         </>
+      )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: "New note here",
+              icon: <FilePlus size={13} />,
+              onClick: () => {
+                ctx.setExpanded(folder.id, true);
+                void useStore.getState().createNote(folder.id);
+              },
+            },
+            {
+              label: "New subfolder",
+              icon: <FolderPlus size={13} />,
+              onClick: () => setAddingChild(true),
+            },
+            {
+              label: "Rename",
+              icon: <Pencil size={13} />,
+              onClick: () => setRenaming(true),
+            },
+            {
+              label: "Delete folder",
+              icon: <Trash2 size={13} />,
+              danger: true,
+              confirm: true,
+              onClick: () => void deleteFolder(),
+            },
+          ]}
+        />
       )}
     </div>
   );
