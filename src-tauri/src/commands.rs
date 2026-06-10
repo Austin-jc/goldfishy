@@ -353,6 +353,25 @@ pub fn create_folder(app: AppHandle, name: String, parent_id: Option<String>) ->
     Ok(Folder { id, name, parent_id, created_at: now })
 }
 
+/// Re-parent a folder (None = root). Refuses moves into the folder's own subtree.
+#[tauri::command]
+pub fn move_folder(app: AppHandle, id: String, parent_id: Option<String>) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    if let Some(pid) = &parent_id {
+        let subtree = db::folder_with_descendants(&db, &id).map_err(eanyhow)?;
+        if subtree.contains(pid) {
+            return Err("Can't move a folder inside itself".into());
+        }
+    }
+    db.execute(
+        "UPDATE folders SET parent_id = ?1 WHERE id = ?2",
+        params![parent_id, id],
+    )
+    .map_err(estr)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn rename_folder(app: AppHandle, id: String, name: String) -> CmdResult<()> {
     let state = app.state::<AppState>();

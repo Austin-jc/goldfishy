@@ -32,6 +32,31 @@ import type { Folder, Note } from "../types";
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 480;
 const EXPANDED_KEY = "nn.expandedFolders";
+const NOTE_MIME = "application/x-goldfishy-note";
+const FOLDER_MIME = "application/x-goldfishy-folder";
+
+function hasTreePayload(e: React.DragEvent) {
+  return e.dataTransfer.types.includes(NOTE_MIME) || e.dataTransfer.types.includes(FOLDER_MIME);
+}
+
+/** Move whatever was dragged (note or folder) into the target folder. */
+async function handleTreeDrop(e: React.DragEvent, targetFolderId: string | null) {
+  const noteId = e.dataTransfer.getData(NOTE_MIME);
+  const folderId = e.dataTransfer.getData(FOLDER_MIME);
+  const st = useStore.getState();
+  try {
+    if (noteId) {
+      await api.moveNote(noteId, targetFolderId);
+      await st.refreshNotes();
+      if (st.selectedNote?.id === noteId) void st.selectNote(noteId);
+    } else if (folderId && folderId !== targetFolderId) {
+      await api.moveFolder(folderId, targetFolderId);
+      await st.refreshFolders();
+    }
+  } catch (err) {
+    st.toast(String(err), "error");
+  }
+}
 
 function loadExpanded(): Record<string, boolean> {
   try {
@@ -67,6 +92,7 @@ export default function Sidebar() {
   const settings = useStore((s) => s.settings);
   const [addingRoot, setAddingRoot] = useState(false);
   const [titlingAll, setTitlingAll] = useState(false);
+  const [rootDropHover, setRootDropHover] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(
     () => localStorage.getItem("nn.tagsOpen") !== "0",
   );
@@ -303,10 +329,27 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="px-2 pb-2">
-            {/* the explorer root — hover it for a new root folder */}
+            {/* the explorer root — hover for a new folder, drop to unfile */}
             <div
+              onDragOver={(e) => {
+                if (hasTreePayload(e)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setRootDropHover(true);
+                }
+              }}
+              onDragLeave={() => setRootDropHover(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setRootDropHover(false);
+                void handleTreeDrop(e, null);
+              }}
               className={`group flex items-center rounded-lg transition-colors ${
-                view.kind === "all" ? "bg-clay-600/15" : "hover:bg-stone-800/60"
+                rootDropHover
+                  ? "bg-clay-600/15 ring-1 ring-inset ring-clay-500"
+                  : view.kind === "all"
+                    ? "bg-clay-600/15"
+                    : "hover:bg-stone-800/60"
               }`}
             >
               <button
@@ -757,6 +800,12 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
         }}
         onMouseEnter={startPreview}
         onMouseLeave={stopPreview}
+        draggable
+        onDragStart={(e) => {
+          stopPreview();
+          e.dataTransfer.setData(NOTE_MIME, note.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
         className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg py-1 pr-2 text-left text-[12.5px] transition-colors ${
           active
             ? "bg-stone-800/80 text-stone-100"
@@ -838,6 +887,7 @@ function FolderNode({
   const [renaming, setRenaming] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
 
   const children = ctx.childrenOf.get(folder.id) ?? [];
   const folderNotes = ctx.notesByFolder.get(folder.id) ?? [];
@@ -866,8 +916,34 @@ function FolderNode({
   return (
     <div>
       <div
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.dataTransfer.setData(FOLDER_MIME, folder.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => {
+          if (hasTreePayload(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "move";
+            setDropHover(true);
+          }
+        }}
+        onDragLeave={() => setDropHover(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDropHover(false);
+          ctx.setExpanded(folder.id, true);
+          void handleTreeDrop(e, folder.id);
+        }}
         className={`group flex items-center gap-1 rounded-lg px-1 py-1 text-sm transition-colors ${
-          active ? "bg-clay-600/15 text-clay-300" : "text-stone-300 hover:bg-stone-800/60"
+          dropHover
+            ? "bg-clay-600/15 text-clay-300 ring-1 ring-inset ring-clay-500"
+            : active
+              ? "bg-clay-600/15 text-clay-300"
+              : "text-stone-300 hover:bg-stone-800/60"
         } ${dimmed ? "opacity-50" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
       >

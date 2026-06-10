@@ -61,6 +61,7 @@ pub fn run() {
             commands::related_notes,
             commands::list_folders,
             commands::create_folder,
+            commands::move_folder,
             commands::rename_folder,
             commands::delete_folder,
             commands::list_tags,

@@ -52,6 +52,8 @@ export const api = {
   listFolders: () => invoke<Folder[]>("list_folders"),
   createFolder: (name: string, parentId: string | null) =>
     invoke<Folder>("create_folder", { name, parentId }),
+  moveFolder: (id: string, parentId: string | null) =>
+    invoke<void>("move_folder", { id, parentId }),
   renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),
   deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
   listTags: () => invoke<TagCount[]>("list_tags"),
