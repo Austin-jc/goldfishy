@@ -1,0 +1,76 @@
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import type {
+  AppSettings,
+  CollectionSummary,
+  Folder,
+  Note,
+  QueueStatus,
+  SearchMode,
+  TagCount,
+} from "./types";
+
+// Absolute path of the app data dir, set once at startup; used to resolve
+// relative `images/...` markdown references for display.
+let dataDir: string | null = null;
+export function setDataDir(dir: string) {
+  dataDir = dir;
+}
+export function resolveImageSrc(src: string): string {
+  if (!src) return src;
+  if (/^(https?|asset|data|blob):/.test(src)) return src;
+  if (dataDir && !src.startsWith("/")) {
+    return convertFileSrc(`${dataDir}/${src}`);
+  }
+  if (src.startsWith("/")) return convertFileSrc(src);
+  return src;
+}
+
+export const api = {
+  // notes
+  listNotes: (folderId: string | null, tag: string | null) =>
+    invoke<Note[]>("list_notes", { folderId, tag }),
+  getNote: (id: string) => invoke<Note>("get_note", { id }),
+  createNote: (folderId: string | null) => invoke<Note>("create_note", { folderId }),
+  updateNote: (id: string, title: string, content: string) =>
+    invoke<Note>("update_note", { id, title, content }),
+  deleteNote: (id: string) => invoke<void>("delete_note", { id }),
+  moveNote: (id: string, folderId: string | null) =>
+    invoke<Note>("move_note", { id, folderId }),
+  addTag: (noteId: string, tag: string) => invoke<Note>("add_tag", { noteId, tag }),
+  removeTag: (noteId: string, tag: string) => invoke<Note>("remove_tag", { noteId, tag }),
+  acceptFolderSuggestion: (noteId: string) =>
+    invoke<Note>("accept_folder_suggestion", { noteId }),
+  dismissFolderSuggestion: (noteId: string) =>
+    invoke<Note>("dismiss_folder_suggestion", { noteId }),
+  searchNotes: (query: string, mode: SearchMode) =>
+    invoke<Note[]>("search_notes", { query, mode }),
+
+  // folders & tags
+  listFolders: () => invoke<Folder[]>("list_folders"),
+  createFolder: (name: string, parentId: string | null) =>
+    invoke<Folder>("create_folder", { name, parentId }),
+  renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),
+  deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
+  listTags: () => invoke<TagCount[]>("list_tags"),
+
+  // AI
+  aiProcessNote: (noteId: string) => invoke<Note>("ai_process_note", { noteId }),
+  aiBulletify: (noteId: string) => invoke<Note>("ai_bulletify", { noteId }),
+  aiSummarizeCollection: (kind: string, key: string) =>
+    invoke<string>("ai_summarize_collection", { kind, key }),
+  getCollectionSummary: (kind: string, key: string) =>
+    invoke<CollectionSummary | null>("get_collection_summary", { kind, key }),
+  testLlm: () => invoke<string>("test_llm"),
+  downloadModel: (repo: string) => invoke<string>("download_model", { repo }),
+
+  // settings & system
+  getSettings: () => invoke<AppSettings>("get_settings"),
+  setSettings: (settings: AppSettings) => invoke<void>("set_settings", { settings }),
+  reindexAll: () => invoke<QueueStatus>("reindex_all"),
+  queueStatus: () => invoke<QueueStatus>("queue_status"),
+  notifyActivity: () => invoke<void>("notify_activity"),
+  getDataDir: () => invoke<string>("get_data_dir"),
+  saveImage: (srcPath: string) => invoke<string>("save_image", { srcPath }),
+  exportNotes: (dest: string, format: "markdown" | "json") =>
+    invoke<number>("export_notes", { dest, format }),
+};

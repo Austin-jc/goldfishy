@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-200 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+.ProseMirror {
+  user-select: text;
+  cursor: text;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(63 63 70 / 0.6);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------ editor ------------------------------ */
+
+.ProseMirror {
+  outline: none;
+  min-height: 100%;
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+
+.ProseMirror > * + * {
+  margin-top: 0.55em;
+}
+
+.ProseMirror h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fafafa;
+  margin-top: 1em;
+}
+.ProseMirror h2 {
+  font-size: 1.3rem;
+  font-weight: 650;
+  color: #f4f4f5;
+  margin-top: 0.9em;
+}
+.ProseMirror h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.ProseMirror li > p {
+  margin: 0;
+}
+.ProseMirror li + li {
+  margin-top: 0.15em;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 0.9rem;
+  color: #a1a1aa;
+  font-style: italic;
+}
+
+.ProseMirror code {
+  background: #27272a;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #fbbf24;
+}
+
+.ProseMirror pre {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.ProseMirror pre code {
+  background: transparent;
+  padding: 0;
+  color: #e4e4e7;
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #6366f1;
+}
+
+.ProseMirror a {
+  color: #818cf8;
+  text-decoration: underline;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid #3f3f46;
+  margin: 1.2em 0;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #52525b;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+mark {
+  background: rgb(99 102 241 / 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* AI results fade in silently (spec: no blocking modals) */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-slide-in 0.45s ease both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}

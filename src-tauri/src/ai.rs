@@ -1,0 +1,485 @@
+use std::process::Stdio;
+use std::time::Duration;
+
+use anyhow::{anyhow, bail, Context, Result};
+use futures_util::StreamExt;
+use serde::Deserialize;
+use serde_json::json;
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::AsyncWriteExt;
+use tokio::time::Instant;
+
+use crate::db::{self, now_ms};
+use crate::models::{AppSettings, Note};
+use crate::state::{AppState, SidecarProc};
+
+pub fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max).collect();
+        out.push('…');
+        out
+    }
+}
+
+fn strip_fences(s: &str) -> String {
+    let t = s.trim();
+    if !t.starts_with("```") {
+        return t.to_string();
+    }
+    let mut lines: Vec<&str> = t.lines().collect();
+    if !lines.is_empty() {
+        lines.remove(0);
+    }
+    if let Some(last) = lines.last() {
+        if last.trim_start().starts_with("```") {
+            lines.pop();
+        }
+    }
+    lines.join("\n").trim().to_string()
+}
+
+pub fn extract_json(s: &str) -> Option<serde_json::Value> {
+    let cleaned = strip_fences(s);
+    let start = cleaned.find('{')?;
+    let end = cleaned.rfind('}')?;
+    if end <= start {
+        return None;
+    }
+    serde_json::from_str(&cleaned[start..=end]).ok()
+}
+
+fn normalize_tag(t: &str) -> String {
+    t.trim()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+        .chars()
+        .take(40)
+        .collect()
+}
+
+fn current_settings(app: &AppHandle) -> AppSettings {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db::load_settings(&db)
+}
+
+/// Start (or reuse) the llama.cpp `llama-server` sidecar and return its base URL.
+pub async fn ensure_sidecar(app: &AppHandle, settings: &AppSettings) -> Result<String> {
+    if settings.sidecar_binary.trim().is_empty() {
+        bail!("No llama-server binary configured. Open Settings → AI Engine and pick one.");
+    }
+    if settings.model_path.trim().is_empty() {
+        bail!("No GGUF model configured. Open Settings → AI Engine and pick or download one.");
+    }
+    let state = app.state::<AppState>();
+    let url = format!("http://127.0.0.1:{}", settings.sidecar_port);
+    let mut guard = state.sidecar.lock().await;
+
+    if let Some(proc) = guard.as_mut() {
+        let alive = proc.child.try_wait().map(|s| s.is_none()).unwrap_or(false);
+        if alive
+            && proc.binary == settings.sidecar_binary
+            && proc.model_path == settings.model_path
+            && proc.port == settings.sidecar_port
+        {
+            return Ok(url);
+        }
+        let _ = proc.child.start_kill();
+        *guard = None;
+    }
+
+    let child = tokio::process::Command::new(&settings.sidecar_binary)
+        .args([
+            "-m",
+            &settings.model_path,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &settings.sidecar_port.to_string(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .with_context(|| format!("failed to start llama-server at {}", settings.sidecar_binary))?;
+
+    let mut proc = SidecarProc {
+        child,
+        binary: settings.sidecar_binary.clone(),
+        model_path: settings.model_path.clone(),
+        port: settings.sidecar_port,
+    };
+
+    let http = state.http.clone();
+    let deadline = Instant::now() + Duration::from_secs(180);
+    loop {
+        if let Ok(Some(status)) = proc.child.try_wait() {
+            bail!("llama-server exited during startup ({status}). Check the binary and model paths.");
+        }
+        if let Ok(resp) = http
+            .get(format!("{url}/health"))
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
+            if resp.status().is_success() {
+                break;
+            }
+        }
+        if Instant::now() > deadline {
+            let _ = proc.child.start_kill();
+            bail!("llama-server did not become healthy within 180s");
+        }
+        tokio::time::sleep(Duration::from_millis(750)).await;
+    }
+
+    *guard = Some(proc);
+    Ok(url)
+}
+
+pub async fn kill_sidecar(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let mut guard = state.sidecar.lock().await;
+    if let Some(proc) = guard.as_mut() {
+        let _ = proc.child.start_kill();
+    }
+    *guard = None;
+}
+
+/// One-shot chat completion against whichever backend is configured.
+/// Works with llama-server, Ollama, LM Studio, vLLM — anything OpenAI-compatible.
+pub async fn chat(app: &AppHandle, system: &str, user: &str, max_tokens: u32) -> Result<String> {
+    let settings = current_settings(app);
+    let (base, model, api_key) = match settings.llm_backend.as_str() {
+        "external" => {
+            let base = settings.external_url.trim().trim_end_matches('/').to_string();
+            if base.is_empty() {
+                bail!("External server URL is empty. Set it in Settings → AI Engine.");
+            }
+            let model = if settings.external_model.trim().is_empty() {
+                "default".to_string()
+            } else {
+                settings.external_model.trim().to_string()
+            };
+            (base, model, settings.external_api_key.clone())
+        }
+        "sidecar" => {
+            let base = ensure_sidecar(app, &settings).await?;
+            (base, "local".to_string(), String::new())
+        }
+        _ => bail!("No LLM backend configured. Open Settings → AI Engine to choose one."),
+    };
+
+    let state = app.state::<AppState>();
+    let mut req = state
+        .http
+        .post(format!("{base}/v1/chat/completions"))
+        .timeout(Duration::from_secs(300))
+        .json(&json!({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.3,
+            "max_tokens": max_tokens,
+        }));
+    if !api_key.trim().is_empty() {
+        req = req.bearer_auth(api_key.trim());
+    }
+
+    let resp = req.send().await.context("LLM request failed — is the server running?")?;
+    let status = resp.status();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .context("LLM server returned a non-JSON response")?;
+    if !status.is_success() {
+        bail!("LLM server error {status}: {body}");
+    }
+    let content = body["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| anyhow!("LLM response missing choices[0].message.content"))?;
+    Ok(content.trim().to_string())
+}
+
+/// Queue 2 task: suggest 3 tags and a destination folder for a note.
+pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> {
+    let state = app.state::<AppState>();
+    let (input, title, content, folders) = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        let folders = db::list_folders(&db)?;
+        (
+            db::ai_input(&note.title, &note.content),
+            note.title,
+            note.content,
+            folders,
+        )
+    };
+
+    let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+    let folders_json = serde_json::to_string(&folder_names)?;
+    let system = "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.";
+    let user = format!(
+        "Suggest exactly 3 short lowercase topical tags (1-2 words each) for the note below, \
+         and choose the single best destination folder for it from this list: {folders_json}. \
+         Use null for the folder if none fits well or the list is empty.\n\n\
+         NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
+         Reply with JSON exactly like: {{\"tags\": [\"tag1\", \"tag2\", \"tag3\"], \"folder\": \"folder name or null\"}}",
+        truncate_chars(&title, 200),
+        truncate_chars(&content, 6000),
+    );
+
+    let reply = chat(app, system, &user, 250).await?;
+    let parsed =
+        extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
+
+    let tags: Vec<String> = parsed["tags"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .map(normalize_tag)
+                .filter(|t| !t.is_empty())
+                .take(3)
+                .collect()
+        })
+        .unwrap_or_default();
+    let folder_name = parsed["folder"].as_str().map(str::to_string);
+
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "DELETE FROM note_tags WHERE note_id = ?1 AND source = 'ai'",
+        rusqlite::params![note_id],
+    )?;
+    for t in &tags {
+        db.execute(
+            "INSERT OR IGNORE INTO note_tags(note_id, tag, source) VALUES (?1, ?2, 'ai')",
+            rusqlite::params![note_id, t],
+        )?;
+    }
+
+    let current_folder: Option<String> =
+        db.query_row("SELECT folder_id FROM notes WHERE id = ?1", rusqlite::params![note_id], |r| {
+            r.get(0)
+        })?;
+    let suggested = folder_name
+        .and_then(|name| {
+            folders
+                .iter()
+                .find(|f| f.name.eq_ignore_ascii_case(name.trim()))
+                .map(|f| f.id.clone())
+        })
+        .filter(|id| Some(id) != current_folder.as_ref());
+
+    db.execute(
+        "UPDATE notes SET suggested_folder_id = ?1, last_llm_input = ?2 WHERE id = ?3",
+        rusqlite::params![suggested, input, note_id],
+    )?;
+    // Only mark CLEAN if the note wasn't edited again while the LLM was running.
+    db.execute(
+        "UPDATE notes SET llm_status = 'CLEAN' WHERE id = ?1 AND llm_status = 'PENDING'",
+        rusqlite::params![note_id],
+    )?;
+
+    Ok(db::get_note(&db, note_id)?)
+}
+
+/// Restructure stream-of-consciousness text into concise markdown bullets.
+pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
+    let state = app.state::<AppState>();
+    let content = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        if note.content.trim().is_empty() {
+            bail!("Note is empty — nothing to restructure.");
+        }
+        note.content
+    };
+
+    let system = "You restructure messy notes into clean markdown. Reply with ONLY the restructured markdown — no preamble, no explanation.";
+    let user = format!(
+        "Rewrite the following stream-of-consciousness note as concise markdown bullet points. \
+         Group related points under short bold headings where it helps. Preserve every distinct \
+         piece of information, all links and image references.\n\n{}",
+        truncate_chars(&content, 12000),
+    );
+
+    let reply = chat(app, system, &user, 2048).await?;
+    let new_content = strip_fences(&reply);
+    if new_content.trim().is_empty() {
+        bail!("LLM returned an empty result");
+    }
+
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE notes SET content = ?1, updated_at = ?2, embedding_status = 'STALE', llm_status = 'STALE' WHERE id = ?3",
+        rusqlite::params![new_content, now_ms(), note_id],
+    )?;
+    Ok(db::get_note(&db, note_id)?)
+}
+
+/// Synthesize a one-paragraph summary of all notes in a folder (recursive) or tag.
+pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Result<String> {
+    let state = app.state::<AppState>();
+    let notes = {
+        let db = state.db.lock().unwrap();
+        match kind {
+            "folder" => {
+                let ids = db::folder_with_descendants(&db, key)?;
+                let mut all = Vec::new();
+                for fid in ids {
+                    all.extend(db::list_notes(&db, Some(&fid), None)?);
+                }
+                all
+            }
+            "tag" => db::list_notes(&db, None, Some(key))?,
+            _ => db::list_notes(&db, None, None)?,
+        }
+    };
+    if notes.is_empty() {
+        bail!("No notes in this collection yet.");
+    }
+
+    let mut corpus = String::new();
+    for n in notes.iter().take(40) {
+        corpus.push_str(&format!(
+            "## {}\n{}\n\n",
+            if n.title.is_empty() { "(untitled)" } else { &n.title },
+            truncate_chars(&n.content, 1200)
+        ));
+        if corpus.len() > 16000 {
+            break;
+        }
+    }
+
+    let system = "You summarize collections of personal notes. Reply with ONLY the summary paragraph — no heading, no preamble.";
+    let user = format!(
+        "Write one concise paragraph (4-6 sentences) that synthesizes the key themes, facts, \
+         decisions and open items across this collection of {} notes:\n\n{corpus}",
+        notes.len()
+    );
+    let summary = chat(app, system, &user, 500).await?;
+    let summary = strip_fences(&summary);
+
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "INSERT INTO collection_summaries(kind, key, summary, updated_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(kind, key) DO UPDATE SET summary = excluded.summary, updated_at = excluded.updated_at",
+        rusqlite::params![kind, key, summary, now_ms()],
+    )?;
+    Ok(summary)
+}
+
+#[derive(Deserialize)]
+struct HfEntry {
+    #[serde(rename = "type")]
+    kind: String,
+    path: String,
+    #[serde(default)]
+    size: u64,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct DownloadProgress {
+    file: String,
+    downloaded: u64,
+    total: u64,
+    done: bool,
+}
+
+/// Download a GGUF from a HuggingFace repo into the app's model cache.
+/// Prefers a Q4_K_M quant, otherwise picks the smallest .gguf in the repo.
+pub async fn download_hf_model(app: &AppHandle, repo: &str) -> Result<String> {
+    let repo = repo.trim().trim_matches('/');
+    if repo.is_empty() || !repo.contains('/') {
+        bail!("Enter a HuggingFace repo id like TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF");
+    }
+    let state = app.state::<AppState>();
+    let http = state.http.clone();
+
+    let entries: Vec<HfEntry> = http
+        .get(format!("https://huggingface.co/api/models/{repo}/tree/main?recursive=true"))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .context("could not reach huggingface.co")?
+        .error_for_status()
+        .with_context(|| format!("HuggingFace repo '{repo}' not found or not accessible"))?
+        .json()
+        .await
+        .context("unexpected response from HuggingFace API")?;
+
+    let mut ggufs: Vec<&HfEntry> = entries
+        .iter()
+        .filter(|e| e.kind == "file" && e.path.to_lowercase().ends_with(".gguf"))
+        .collect();
+    if ggufs.is_empty() {
+        bail!("No .gguf files found in '{repo}'");
+    }
+    ggufs.sort_by_key(|e| if e.size == 0 { u64::MAX } else { e.size });
+    let chosen = ggufs
+        .iter()
+        .find(|e| e.path.to_lowercase().contains("q4_k_m"))
+        .copied()
+        .unwrap_or(ggufs[0]);
+
+    let fname = chosen
+        .path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&chosen.path)
+        .to_string();
+    let dest_dir = app.path().app_data_dir()?.join("models");
+    tokio::fs::create_dir_all(&dest_dir).await?;
+    let dest = dest_dir.join(&fname);
+    let tmp = dest_dir.join(format!("{fname}.part"));
+
+    let resp = http
+        .get(format!("https://huggingface.co/{repo}/resolve/main/{}", chosen.path))
+        .send()
+        .await
+        .context("download request failed")?
+        .error_for_status()
+        .context("download request rejected")?;
+    let total = resp.content_length().unwrap_or(chosen.size);
+
+    let mut file = tokio::fs::File::create(&tmp).await?;
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+    let mut last_emit: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.context("download interrupted")?;
+        file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+        if downloaded - last_emit > 4 * 1024 * 1024 {
+            last_emit = downloaded;
+            let _ = app.emit(
+                "model-download-progress",
+                DownloadProgress { file: fname.clone(), downloaded, total, done: false },
+            );
+        }
+    }
+    file.flush().await?;
+    drop(file);
+    tokio::fs::rename(&tmp, &dest).await?;
+
+    let dest_str = dest.to_string_lossy().to_string();
+    {
+        let db = state.db.lock().unwrap();
+        let mut s = db::load_settings(&db);
+        s.model_path = dest_str.clone();
+        s.hf_repo = repo.to_string();
+        db::save_settings(&db, &s)?;
+    }
+    let _ = app.emit(
+        "model-download-progress",
+        DownloadProgress { file: fname, downloaded, total, done: true },
+    );
+    Ok(dest_str)
+}

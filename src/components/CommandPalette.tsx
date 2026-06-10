@@ -1,0 +1,309 @@
+import { useEffect, useRef, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import {
+  ChevronRight,
+  Download,
+  FileText,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Sparkles,
+} from "lucide-react";
+import { api } from "../api";
+import { useStore } from "../store";
+import { relativeTime, snippetHtml, stripMarkdown } from "../utils";
+import type { Note, SearchMode } from "../types";
+
+interface Command {
+  label: string;
+  hint?: string;
+  icon: React.ReactNode;
+  run: () => void | Promise<void>;
+}
+
+function buildCommands(close: () => void): Command[] {
+  return [
+    {
+      label: "New note",
+      hint: "⌘N",
+      icon: <Plus size={14} />,
+      run: () => {
+        close();
+        void useStore.getState().createNote();
+      },
+    },
+    {
+      label: "Open settings",
+      hint: "⌘,",
+      icon: <Settings size={14} />,
+      run: () => {
+        close();
+        useStore.getState().setSettingsOpen(true);
+      },
+    },
+    {
+      label: "Sync / re-index database",
+      icon: <RefreshCw size={14} />,
+      run: async () => {
+        close();
+        try {
+          const status = await api.reindexAll();
+          useStore.getState().setQueue(status);
+          useStore.getState().toast("Re-index started");
+        } catch (e) {
+          useStore.getState().toast(String(e), "error");
+        }
+      },
+    },
+    {
+      label: "Export all notes as Markdown",
+      icon: <Download size={14} />,
+      run: async () => {
+        close();
+        const dir = await openDialog({ directory: true, multiple: false });
+        if (typeof dir !== "string") return;
+        try {
+          const n = await api.exportNotes(dir, "markdown");
+          useStore.getState().toast(`Exported ${n} notes as Markdown`, "success");
+        } catch (e) {
+          useStore.getState().toast(String(e), "error");
+        }
+      },
+    },
+    {
+      label: "Export all notes as JSON",
+      icon: <Download size={14} />,
+      run: async () => {
+        close();
+        const dir = await openDialog({ directory: true, multiple: false });
+        if (typeof dir !== "string") return;
+        try {
+          const n = await api.exportNotes(dir, "json");
+          useStore.getState().toast(`Exported ${n} notes as JSON`, "success");
+        } catch (e) {
+          useStore.getState().toast(String(e), "error");
+        }
+      },
+    },
+  ];
+}
+
+export default function CommandPalette() {
+  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<SearchMode>("keyword");
+  const [results, setResults] = useState<Note[]>([]);
+  const [sel, setSel] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const close = () => useStore.getState().setPaletteOpen(false);
+  const isCommandMode = query.startsWith(">");
+  const commands = buildCommands(close);
+  const filteredCommands = isCommandMode
+    ? commands.filter((c) =>
+        c.label.toLowerCase().includes(query.slice(1).trim().toLowerCase()),
+      )
+    : [];
+
+  // Live note search; semantic gets a slightly longer debounce.
+  useEffect(() => {
+    if (isCommandMode) return;
+    let cancelled = false;
+    if (!query.trim()) {
+      void api.listNotes(null, null).then((notes) => {
+        if (!cancelled) setResults(notes.slice(0, 12));
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    const t = setTimeout(
+      async () => {
+        setBusy(true);
+        try {
+          const r = await api.searchNotes(query, mode);
+          if (!cancelled) setResults(r);
+        } catch (e) {
+          if (!cancelled) useStore.getState().toast(String(e), "error");
+        } finally {
+          if (!cancelled) setBusy(false);
+        }
+      },
+      mode === "keyword" ? 120 : 450,
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, mode, isCommandMode]);
+
+  const itemCount = isCommandMode ? filteredCommands.length : results.length;
+  useEffect(() => setSel(0), [query, mode]);
+
+  const openNote = (id: string) => {
+    close();
+    void useStore.getState().selectNote(id);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSel((s) => Math.min(s + 1, Math.max(itemCount - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSel((s) => Math.max(s - 1, 0));
+    } else if (e.key === "Tab" && !isCommandMode) {
+      e.preventDefault();
+      setMode((m) => (m === "keyword" ? "semantic" : "keyword"));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (isCommandMode) {
+        void filteredCommands[sel]?.run();
+      } else if (results[sel]) {
+        openNote(results[sel].id);
+      }
+    }
+  };
+
+  // Keep the selected row visible while arrowing.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(`[data-idx="${sel}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [sel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-center bg-black/50 pt-24"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) close();
+      }}
+    >
+      <div className="flex h-fit max-h-[60vh] w-[560px] flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2.5">
+          {busy ? (
+            <Loader2 size={15} className="animate-spin text-indigo-400" />
+          ) : isCommandMode ? (
+            <ChevronRight size={15} className="text-indigo-400" />
+          ) : mode === "semantic" ? (
+            <Sparkles size={15} className="text-indigo-400" />
+          ) : (
+            <Search size={15} className="text-zinc-500" />
+          )}
+          <input
+            ref={inputRef}
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={
+              isCommandMode
+                ? "Type a command…"
+                : mode === "semantic"
+                  ? "Search by meaning…"
+                  : "Search notes, or type > for commands…"
+            }
+            className="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+          />
+          {!isCommandMode && (
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
+                mode === "semantic"
+                  ? "bg-indigo-600/30 text-indigo-300"
+                  : "bg-zinc-800 text-zinc-500"
+              }`}
+            >
+              {mode}
+            </span>
+          )}
+        </div>
+
+        <div ref={listRef} className="flex-1 overflow-y-auto">
+          {isCommandMode ? (
+            <>
+              {filteredCommands.map((c, i) => (
+                <button
+                  key={c.label}
+                  data-idx={i}
+                  onMouseEnter={() => setSel(i)}
+                  onClick={() => void c.run()}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${
+                    sel === i ? "bg-indigo-600/20 text-indigo-200" : "text-zinc-300"
+                  }`}
+                >
+                  <span className="text-zinc-500">{c.icon}</span>
+                  {c.label}
+                  {c.hint && (
+                    <kbd className="ml-auto rounded border border-zinc-700 px-1 text-[9px] text-zinc-500">
+                      {c.hint}
+                    </kbd>
+                  )}
+                </button>
+              ))}
+              {filteredCommands.length === 0 && (
+                <p className="px-4 py-6 text-center text-xs text-zinc-600">No matching command</p>
+              )}
+            </>
+          ) : (
+            <>
+              {results.map((n, i) => (
+                <button
+                  key={n.id}
+                  data-idx={i}
+                  onMouseEnter={() => setSel(i)}
+                  onClick={() => openNote(n.id)}
+                  className={`flex w-full items-start gap-2.5 px-3 py-2 text-left ${
+                    sel === i ? "bg-indigo-600/20" : ""
+                  }`}
+                >
+                  <FileText size={14} className="mt-0.5 shrink-0 text-zinc-500" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline gap-2">
+                      <span className="truncate text-sm text-zinc-100">
+                        {n.title || "Untitled"}
+                      </span>
+                      <span className="ml-auto shrink-0 text-[9px] text-zinc-600">
+                        {typeof n.score === "number" && n.score <= 1 && n.score > 0
+                          ? `${(n.score * 100).toFixed(0)}%`
+                          : relativeTime(n.updated_at)}
+                      </span>
+                    </span>
+                    {n.snippet ? (
+                      <span
+                        className="line-clamp-1 text-[11px] text-zinc-500"
+                        dangerouslySetInnerHTML={{ __html: snippetHtml(n.snippet) }}
+                      />
+                    ) : (
+                      <span className="line-clamp-1 text-[11px] text-zinc-500">
+                        {stripMarkdown(n.content).slice(0, 100)}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              ))}
+              {results.length === 0 && !busy && (
+                <p className="px-4 py-6 text-center text-xs text-zinc-600">
+                  {query.trim() ? "No results" : "No notes yet"}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex gap-3 border-t border-zinc-800 px-3 py-1.5 text-[9px] text-zinc-600">
+          <span>↑↓ navigate</span>
+          <span>↵ open</span>
+          {!isCommandMode && <span>tab {mode === "keyword" ? "semantic" : "keyword"} search</span>}
+          <span>&gt; commands</span>
+          <span className="ml-auto">esc close</span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,76 @@
+export type PipelineStatus = "CLEAN" | "PENDING" | "STALE";
+
+export interface NoteTag {
+  tag: string;
+  source: "manual" | "ai";
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  folder_id: string | null;
+  created_at: number;
+  updated_at: number;
+  tags: NoteTag[];
+  embedding_status: PipelineStatus;
+  llm_status: PipelineStatus;
+  suggested_folder_id: string | null;
+  has_embedding: boolean;
+  score?: number;
+  snippet?: string;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  created_at: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export interface QueueStatus {
+  embed_stale: number;
+  embed_pending: number;
+  llm_stale: number;
+  llm_pending: number;
+  sweep_active: boolean;
+  embedder_ready: boolean;
+}
+
+export interface AppSettings {
+  automation_mode: "auto" | "manual";
+  embed_debounce_secs: number;
+  llm_debounce_secs: number;
+  llm_backend: "none" | "external" | "sidecar";
+  external_url: string;
+  external_model: string;
+  external_api_key: string;
+  sidecar_binary: string;
+  model_path: string;
+  sidecar_port: number;
+  hf_repo: string;
+}
+
+export interface CollectionSummary {
+  summary: string;
+  updated_at: number;
+}
+
+export type SearchMode = "keyword" | "semantic";
+
+export interface View {
+  kind: "all" | "folder" | "tag";
+  key: string | null;
+}
+
+export interface DownloadProgress {
+  file: string;
+  downloaded: number;
+  total: number;
+  done: boolean;
+}
