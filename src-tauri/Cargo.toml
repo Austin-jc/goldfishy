@@ -27,3 +27,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "proce
 futures-util = "0.3"
 fastembed = "4"
 chrono = "0.4"
+base64 = "0.22"

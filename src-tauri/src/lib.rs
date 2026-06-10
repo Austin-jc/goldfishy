@@ -89,6 +89,7 @@ pub fn run() {
             commands::notify_activity,
             commands::get_data_dir,
             commands::save_image,
+            commands::save_image_bytes,
             commands::export_notes,
         ])
         .build(tauri::generate_context!())

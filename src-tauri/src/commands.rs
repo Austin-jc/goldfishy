@@ -793,6 +793,27 @@ pub fn save_image(app: AppHandle, src_path: String) -> CmdResult<String> {
     Ok(format!("images/{name}"))
 }
 
+/// Save pasted image data (base64) into app storage; returns the relative path.
+#[tauri::command]
+pub fn save_image_bytes(app: AppHandle, data_base64: String, ext: String) -> CmdResult<String> {
+    use base64::Engine;
+    let ext = ext.to_lowercase();
+    if !["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"].contains(&ext.as_str()) {
+        return Err("Unsupported image type".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(estr)?;
+    if bytes.is_empty() {
+        return Err("Empty image data".into());
+    }
+    let name = format!("{}.{ext}", Uuid::new_v4());
+    let dir = app.path().app_data_dir().map_err(estr)?.join("images");
+    std::fs::create_dir_all(&dir).map_err(estr)?;
+    std::fs::write(dir.join(&name), &bytes).map_err(estr)?;
+    Ok(format!("images/{name}"))
+}
+
 // ---------------------------------------------------------------- export
 
 fn sanitize_filename(s: &str) -> String {

@@ -99,6 +99,8 @@ export const api = {
   notifyActivity: () => invoke<void>("notify_activity"),
   getDataDir: () => invoke<string>("get_data_dir"),
   saveImage: (srcPath: string) => invoke<string>("save_image", { srcPath }),
+  saveImageBytes: (dataBase64: string, ext: string) =>
+    invoke<string>("save_image_bytes", { dataBase64, ext }),
   exportNotes: (dest: string, format: "markdown" | "json") =>
     invoke<number>("export_notes", { dest, format }),
 };

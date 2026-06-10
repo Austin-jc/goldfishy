@@ -50,6 +50,18 @@ import type { Note } from "../types";
 
 const lowlight = createLowlight(common);
 
+function bufToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+const PASTE_EXT: Record<string, string> = { jpeg: "jpg", "svg+xml": "svg" };
+
 export default function Editor() {
   const noteId = useStore((s) => s.selectedNote?.id);
   if (!noteId) {
@@ -131,6 +143,30 @@ function EditorInner({ noteId }: { noteId: string }) {
       TermHighlight,
     ],
     content: note.content,
+    editorProps: {
+      // ⌘V of image data (screenshots, copied images) saves into app
+      // storage and embeds, same as drag-drop.
+      handlePaste: (view, event) => {
+        const item = Array.from(event.clipboardData?.items ?? []).find((i) =>
+          i.type.startsWith("image/"),
+        );
+        const file = item?.getAsFile();
+        if (!item || !file) return false;
+        event.preventDefault();
+        void (async () => {
+          try {
+            const subtype = item.type.split("/")[1] || "png";
+            const ext = PASTE_EXT[subtype] ?? subtype;
+            const rel = await api.saveImageBytes(bufToBase64(await file.arrayBuffer()), ext);
+            const node = view.state.schema.nodes.image.create({ src: rel });
+            view.dispatch(view.state.tr.replaceSelectionWith(node));
+          } catch (e) {
+            useStore.getState().toast(String(e), "error");
+          }
+        })();
+        return true;
+      },
+    },
     onUpdate: ({ editor }) => {
       contentRef.current = editor.storage.markdown.getMarkdown();
       scheduleSave();
