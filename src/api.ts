@@ -54,10 +54,12 @@ export const api = {
   renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),
   deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
   listTags: () => invoke<TagCount[]>("list_tags"),
+  deleteTag: (tag: string) => invoke<void>("delete_tag", { tag }),
 
   // AI
   aiProcessNote: (noteId: string) => invoke<Note>("ai_process_note", { noteId }),
   aiBulletify: (noteId: string) => invoke<Note>("ai_bulletify", { noteId }),
+  aiTitleUntitled: () => invoke<number>("ai_title_untitled"),
   aiSummarizeCollection: (kind: string, key: string) =>
     invoke<string>("ai_summarize_collection", { kind, key }),
   getCollectionSummary: (kind: string, key: string) =>

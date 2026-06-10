@@ -83,6 +83,17 @@ function EditorInner({ noteId }: { noteId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Adopt an AI-generated title (the worker auto-titles untitled notes) as
+  // long as the user hasn't typed one locally — otherwise the next autosave
+  // would silently wipe it back to empty.
+  useEffect(() => {
+    if (note.title && titleRef.current.trim() === "") {
+      setTitle(note.title);
+      titleRef.current = note.title;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.title]);
+
   const saveNow = useCallback(async () => {
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
@@ -125,14 +136,34 @@ function EditorInner({ noteId }: { noteId: string }) {
   }, [saveNow]);
 
   // Drag & drop local images: copy into app storage, embed as relative path.
+  // The Tauri event carries the pointer position (physical px), so the image
+  // lands where it was dropped — not wherever the cursor happened to be.
   useEffect(() => {
+    if (!editor) return;
+    const docPosAt = (position: { x: number; y: number }): number | null => {
+      const scale = window.devicePixelRatio || 1;
+      const found = editor.view.posAtCoords({
+        left: position.x / scale,
+        top: position.y / scale,
+      });
+      return found ? found.pos : null;
+    };
     const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
+      if (event.payload.type === "over") {
+        // Live caret feedback while hovering a drag over the text.
+        const pos = docPosAt(event.payload.position);
+        if (pos !== null) editor.chain().focus().setTextSelection(pos).run();
+        return;
+      }
       if (event.payload.type !== "drop") return;
       const images = event.payload.paths.filter(isImagePath);
+      if (images.length === 0) return;
+      const pos = docPosAt(event.payload.position);
+      if (pos !== null) editor.chain().focus().setTextSelection(pos).run();
       for (const p of images) {
         try {
           const rel = await api.saveImage(p);
-          editor?.chain().focus().setImage({ src: rel }).run();
+          editor.chain().focus().setImage({ src: rel }).run();
         } catch (e) {
           useStore.getState().toast(String(e), "error");
         }

@@ -16,10 +16,11 @@ src/                          # frontend
   index.css                   # design tokens, per-theme variable overrides, editor CSS
   editor/extensions.ts        # LocalImage, toggleUnifiedCodeBlock
   components/
-    Sidebar.tsx               # nav, resizable/collapsible panel, queue footer+popover, bell
-    NoteList.tsx              # SearchBar (segmented toggle), SummaryBar, NoteItem
+    Sidebar.tsx               # file-tree explorer (notes nested under folders), tag filter, queue footer+popover, bell
+    NoteList.tsx              # SearchBar (segmented toggle), SummaryBar, NoteItem (search-result cards)
     Editor.tsx                # Tiptap editor, FolderPicker, BubbleMenu toolbar, AI buttons
     ActionPanel.tsx           # right slide-over: proposed/scheduled/done, categories
+    DueDatePicker.tsx         # themed popover calendar+time (replaces native datetime-local)
     ReminderBanners.tsx       # persistent in-app due banners (top center)
     SettingsModal.tsx, CommandPalette.tsx, Toasts.tsx, GoldfishLogo.tsx
 src-tauri/src/                # backend
@@ -36,7 +37,9 @@ src-tauri/src/                # backend
 
 ## Core architecture
 
-**Dual-queue worker** (`queue.rs`, 1s tick): per-note `embedding_status` / `llm_status` ∈ `CLEAN | PENDING | STALE`. Tick order: (1) fire due reminders — runs even in Manual mode; (2) embed batch (≤8 stale notes, debounced); (3) one LLM note (only when embed queue empty AND user idle) → `auto_tag_and_route`, then `extract_actions` if enabled. Failures set a 60s cooldown (`*_cooldown_until`). `reindex_all` marks things STALE and sets `sweep_active` for a drain-everything sweep.
+**Dual-queue worker** (`queue.rs`, 1s tick): per-note `embedding_status` / `llm_status` ∈ `CLEAN | PENDING | STALE`. Tick order: (1) fire due reminders — runs even in Manual mode; (2) embed batch (≤8 stale notes, debounced); (3) one LLM note (only when embed queue empty AND user idle) → `generate_title` if untitled, `auto_tag_and_route`, then `extract_actions` if enabled. Failures set a 60s cooldown (`*_cooldown_until`). `reindex_all` marks things STALE and sets `sweep_active` for a drain-everything sweep. While working, the worker publishes a live `current_activity` label + `current_note_id` (`AppState.current_activity` → `QueueStatus`) — shown in the sidebar status footer and queue popover (footer clickability keys off activity too, since extraction runs after counts hit zero).
+
+**Auto-titling** (`ai.rs::generate_title`): untitled notes with content get an LLM title when the worker reaches them (and on manual Organize). The SQL guard `WHERE title = ''` prevents clobbering a title the user typed mid-flight; the editor adopts an externally generated title only while its local title field is empty (otherwise autosave would wipe it back).
 
 **Embedder lifecycle**: model (all-MiniLM-L6-v2, ~80MB) warms up eagerly at launch via `spawn_blocking` in `lib.rs`. Phase lives in an **atomic** (`state.rs::embedder_phase`: cold/downloading/loading/ready/error) so status reads never touch the embedder mutex — that mutex is held for whole embed batches. Init is single-flight via `embedder_init` mutex.
 
@@ -63,7 +66,9 @@ Everything is built from three CSS-variable ramps; **never hardcode a hex in a c
 
 Defaults live in `@theme` in `index.css`; each theme is a `[data-theme="x"]` block overriding the same variables (+ `color-scheme` for native controls). Tailwind v4 emits `var()` refs, so overrides retheme everything live. To add a theme: one CSS block + one entry in `themes.ts`. Applied via `document.documentElement.dataset.theme`, persisted as `nn.theme`. Errors stay fixed dark-red with light-red text (readable on every theme).
 
-UI conventions: no borders between regions — tone shifts + whitespace; popover pattern = `fixed inset-0` click-catcher + absolute panel (see QueueFooter/FolderPicker); formatting toolbar is a Tiptap `BubbleMenu` on text selection only; lucide icons (v1.17 — check `node_modules/lucide-react/dist/esm/icons/` before using a name). localStorage keys: `nn.theme`, `nn.sidebarWidth`, `nn.sidebarCollapsed`.
+UI conventions: no borders between regions — tone shifts + whitespace; popover pattern = `fixed inset-0` click-catcher + absolute panel (see QueueFooter/FolderPicker; DueDatePicker uses `fixed` + anchor rect so the scroll container can't clip it); formatting toolbar is a Tiptap `BubbleMenu` on text selection only; lucide icons (v1.17 — check `node_modules/lucide-react/dist/esm/icons/` before using a name). localStorage keys: `nn.theme`, `nn.sidebarWidth`, `nn.sidebarCollapsed`, `nn.expandedFolders`, `nn.tagsOpen`, `nn.notesOpen`.
+
+**Sidebar model**: the sidebar is a file explorer — folders expand to show subfolders + their notes; unfiled notes sit at root. `store.view` is only `all | folder` (highlight, new-note target, summary scope); tags are no longer a view but an AND filter (`store.tagFilter`) applied server-side in `refreshNotes` (which always fetches across all folders). Active tag filter auto-expands folders with matches and dims the rest; expansion is otherwise user-toggled and persisted. `delete_tag` removes a tag from every note (+ its cached summary). Flat `NoteItem` cards are used only for search results.
 
 ## Settings
 

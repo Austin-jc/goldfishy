@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   Check,
@@ -15,20 +15,11 @@ import {
 import { api } from "../api";
 import { useStore } from "../store";
 import { relativeTime } from "../utils";
+import DueDatePicker from "./DueDatePicker";
 import type { ActionItem } from "../types";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
-}
-
-function msToLocalInput(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function localInputToMs(v: string): number | null {
-  const t = new Date(v).getTime();
-  return Number.isFinite(t) ? t : null;
 }
 
 export function dueLabel(ms: number): { text: string; overdue: boolean } {
@@ -251,7 +242,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function ActionRow({ item }: { item: ActionItem }) {
   const refreshActions = useStore((s) => s.refreshActions);
   const [editingCategory, setEditingCategory] = useState(false);
-  const [editingDue, setEditingDue] = useState(false);
+  const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null);
+  const dueBtnRef = useRef<HTMLButtonElement>(null);
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -341,39 +333,33 @@ function ActionRow({ item }: { item: ActionItem }) {
           </button>
         )}
 
-        {/* due — click to edit */}
-        {editingDue ? (
-          <input
-            autoFocus
-            type="datetime-local"
-            defaultValue={item.due_at ? msToLocalInput(item.due_at) : ""}
-            onBlur={(e) => {
-              setEditingDue(false);
-              const v = e.target.value;
-              const ms = v ? localInputToMs(v) : null;
+        {/* due — click opens the themed picker */}
+        <button
+          ref={dueBtnRef}
+          onClick={() =>
+            setPickerAnchor(dueBtnRef.current?.getBoundingClientRect() ?? null)
+          }
+          title={item.due_at ? "Change reminder time" : "Set a reminder time"}
+          className={`flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+            due?.overdue && !isDone
+              ? "bg-red-950/70 text-red-300"
+              : due
+                ? "bg-stone-800/80 text-stone-300 hover:text-clay-300"
+                : "text-stone-600 hover:text-stone-300"
+          }`}
+        >
+          <CalendarClock size={10} />
+          {due ? due.text : "remind me"}
+        </button>
+        {pickerAnchor && (
+          <DueDatePicker
+            initial={item.due_at}
+            anchor={pickerAnchor}
+            onClose={() => setPickerAnchor(null)}
+            onCommit={(ms) => {
               if (ms !== item.due_at) void run(() => api.setActionDue(item.id, ms));
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setEditingDue(false);
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-            className="rounded-md bg-stone-900 px-1.5 py-0.5 text-[10px] text-stone-200 outline-none ring-1 ring-stone-700"
           />
-        ) : (
-          <button
-            onClick={() => setEditingDue(true)}
-            title={item.due_at ? "Change reminder time" : "Set a reminder time"}
-            className={`flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
-              due?.overdue && !isDone
-                ? "bg-red-950/70 text-red-300"
-                : due
-                  ? "bg-stone-800/80 text-stone-300 hover:text-clay-300"
-                  : "text-stone-600 hover:text-stone-300"
-            }`}
-          >
-            <CalendarClock size={10} />
-            {due ? due.text : "remind me"}
-          </button>
         )}
 
         {item.note_id && (

@@ -560,6 +560,50 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
     Ok(db::get_note(&db, note_id)?)
 }
 
+/// Generate a short title for an untitled note. Returns the note unchanged
+/// if it has been titled in the meantime or has no content.
+pub async fn generate_title(app: &AppHandle, note_id: &str) -> Result<Note> {
+    let state = app.state::<AppState>();
+    let content = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        if !note.title.trim().is_empty() || note.content.trim().is_empty() {
+            return Ok(note);
+        }
+        note.content
+    };
+
+    let system = "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.";
+    let user = format!(
+        "Write a concise, descriptive title (3-8 words) for this note:\n\n{}",
+        truncate_chars(&content, 4000),
+    );
+    let reply = chat(app, system, &user, 32, None).await?;
+    let title: String = strip_fences(&reply)
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .trim_matches(['"', '“', '”', '\'', '`', '#'])
+        .trim_end_matches(['.', '!'])
+        .trim()
+        .chars()
+        .take(80)
+        .collect();
+    if title.is_empty() {
+        bail!("LLM returned an empty title");
+    }
+
+    let db = state.db.lock().unwrap();
+    // `AND title = ''` guards against a title the user typed while we waited.
+    db.execute(
+        "UPDATE notes SET title = ?1, updated_at = ?2, embedding_status = 'STALE'
+         WHERE id = ?3 AND title = ''",
+        rusqlite::params![title, now_ms(), note_id],
+    )?;
+    Ok(db::get_note(&db, note_id)?)
+}
+
 /// Synthesize a one-paragraph summary of all notes in a folder (recursive) or tag.
 pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Result<String> {
     let state = app.state::<AppState>();

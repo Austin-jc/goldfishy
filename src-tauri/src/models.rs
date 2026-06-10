@@ -62,6 +62,10 @@ pub struct QueueStatus {
     pub sweep_active: bool,
     pub embedder_ready: bool,
     pub embedder_state: String, // cold | downloading | loading | ready | error
+    /// What the worker is doing right now (live label), None when idle.
+    pub current_activity: Option<String>,
+    /// Note the live activity targets, when it's a single note.
+    pub current_note_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

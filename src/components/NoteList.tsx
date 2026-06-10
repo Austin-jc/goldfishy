@@ -127,14 +127,17 @@ function ModeButton({
 
 export function SummaryBar() {
   const view = useStore((s) => s.view);
+  const tagFilter = useStore((s) => s.tagFilter);
   const settings = useStore((s) => s.settings);
   const [summary, setSummary] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [working, setWorking] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const kind = view.kind;
-  const key = kind === "tag" ? (view.tags?.[0] ?? "") : (view.key ?? "");
+  // Scope: selected folder beats tag filter beats everything.
+  const kind =
+    view.kind === "folder" ? "folder" : tagFilter.length === 1 ? "tag" : "all";
+  const key = kind === "folder" ? (view.key ?? "") : kind === "tag" ? tagFilter[0] : "";
 
   useEffect(() => {
     setSummary(null);
@@ -149,8 +152,8 @@ export function SummaryBar() {
   }, [kind, key]);
 
   if (settings?.llm_backend === "none") return null;
-  // A summary of a multi-tag intersection would be misleading — single views only.
-  if (kind === "tag" && (view.tags?.length ?? 0) !== 1) return null;
+  // A summary of a multi-tag intersection would be misleading — single scopes only.
+  if (view.kind !== "folder" && tagFilter.length > 1) return null;
 
   const generate = async () => {
     setWorking(true);
@@ -243,8 +246,8 @@ export function NoteItem({ note }: { note: Note }) {
       )}
       <div className="mt-1 flex items-center gap-1.5">
         <span className="text-[10px] text-stone-600">{relativeTime(note.updated_at)}</span>
-        <span className="flex min-w-0 gap-1 overflow-hidden">
-          {note.tags.slice(0, 3).map((t) => (
+        <span className="no-scrollbar flex min-w-0 gap-1 overflow-x-auto">
+          {note.tags.map((t) => (
             <span
               key={t.tag}
               className={`fade-in shrink-0 rounded-full px-1.5 text-[9px] ${

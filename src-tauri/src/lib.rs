@@ -32,6 +32,7 @@ pub fn run() {
                 embed_cooldown_until: Arc::new(AtomicI64::new(0)),
                 llm_cooldown_until: Arc::new(AtomicI64::new(0)),
                 sweep_active: Arc::new(AtomicBool::new(false)),
+                current_activity: Arc::new(Mutex::new(None)),
             });
             queue::spawn_worker(app.handle().clone());
             // Warm the embedder off the UI thread right away: the first-launch
@@ -62,7 +63,9 @@ pub fn run() {
             commands::rename_folder,
             commands::delete_folder,
             commands::list_tags,
+            commands::delete_tag,
             commands::ai_process_note,
+            commands::ai_title_untitled,
             commands::ai_bulletify,
             commands::ai_summarize_collection,
             commands::get_collection_summary,

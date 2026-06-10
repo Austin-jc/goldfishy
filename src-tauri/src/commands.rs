@@ -331,15 +331,39 @@ pub fn list_tags(app: AppHandle) -> CmdResult<Vec<TagCount>> {
     db::list_tags(&db).map_err(eanyhow)
 }
 
+/// Remove a tag from every note that carries it (and its cached summary).
+#[tauri::command]
+pub async fn delete_tag(app: AppHandle, tag: String) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute("DELETE FROM note_tags WHERE tag = ?1", params![tag])
+        .map_err(estr)?;
+    db.execute(
+        "DELETE FROM collection_summaries WHERE kind = 'tag' AND key = ?1",
+        params![tag],
+    )
+    .map_err(estr)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- AI actions
 
 #[tauri::command]
 pub async fn ai_process_note(app: AppHandle, note_id: String) -> CmdResult<Note> {
-    {
+    let untitled = {
         let state = app.state::<AppState>();
         let db = state.db.lock().unwrap();
         db.execute("UPDATE notes SET llm_status = 'PENDING' WHERE id = ?1", params![note_id])
             .map_err(estr)?;
+        let title: String = db
+            .query_row("SELECT title FROM notes WHERE id = ?1", params![note_id], |r| r.get(0))
+            .map_err(estr)?;
+        title.trim().is_empty()
+    };
+    if untitled {
+        if let Err(e) = ai::generate_title(&app, &note_id).await {
+            eprintln!("[title] generation failed for {note_id}: {e:#}");
+        }
     }
     match ai::auto_tag_and_route(&app, &note_id).await {
         Ok(note) => {
@@ -356,6 +380,48 @@ pub async fn ai_process_note(app: AppHandle, note_id: String) -> CmdResult<Note>
             Err(eanyhow(e))
         }
     }
+}
+
+/// Generate titles for every untitled note that has content, sequentially,
+/// publishing live progress through the worker activity label. Returns how
+/// many notes were titled; stops at the first LLM error (it's systemic).
+#[tauri::command]
+pub async fn ai_title_untitled(app: AppHandle) -> CmdResult<i64> {
+    let ids: Vec<String> = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id FROM notes WHERE TRIM(title) = '' AND TRIM(content) != ''
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(estr)?;
+        let rows = stmt.query_map([], |r| r.get(0)).map_err(estr)?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let total = ids.len();
+    let mut titled = 0i64;
+    for (i, id) in ids.iter().enumerate() {
+        queue::set_activity(
+            &app,
+            Some((format!("Titling untitled notes ({}/{total})…", i + 1), Some(id.clone()))),
+        );
+        match ai::generate_title(&app, id).await {
+            Ok(note) => {
+                if !note.title.trim().is_empty() {
+                    titled += 1;
+                }
+                let _ = app.emit("note-updated", note);
+            }
+            Err(e) => {
+                queue::set_activity(&app, None);
+                return Err(format!("Stopped after {titled} of {total}: {e:#}"));
+            }
+        }
+    }
+    queue::set_activity(&app, None);
+    Ok(titled)
 }
 
 #[tauri::command]

@@ -24,6 +24,7 @@ interface Command {
 }
 
 function buildCommands(close: () => void): Command[] {
+  const llmReady = useStore.getState().settings?.llm_backend !== "none";
   return [
     {
       label: "New note",
@@ -34,6 +35,28 @@ function buildCommands(close: () => void): Command[] {
         void useStore.getState().createNote();
       },
     },
+    ...(llmReady
+      ? [
+          {
+            label: "Auto-title untitled notes",
+            icon: <Sparkles size={14} />,
+            run: async () => {
+              close();
+              try {
+                const n = await api.aiTitleUntitled();
+                useStore.getState().toast(
+                  n > 0
+                    ? `Auto-titled ${n} note${n === 1 ? "" : "s"}`
+                    : "No notes needed a title",
+                  "success",
+                );
+              } catch (e) {
+                useStore.getState().toast(String(e), "error");
+              }
+            },
+          } satisfies Command,
+        ]
+      : []),
     {
       label: "Open settings",
       hint: "⌘,",

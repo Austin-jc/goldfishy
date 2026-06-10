@@ -29,6 +29,8 @@ interface Store {
   settings: AppSettings | null;
   queue: QueueStatus | null;
   view: View;
+  /** Tags filtering the file explorer — notes must carry all of them. */
+  tagFilter: string[];
   searchQuery: string;
   searchMode: SearchMode;
   searchResults: Note[] | null;
@@ -48,8 +50,10 @@ interface Store {
   refreshFolders: () => Promise<void>;
   refreshTags: () => Promise<void>;
   selectView: (view: View) => void;
+  setTagFilter: (tags: string[]) => void;
   selectNote: (id: string | null) => Promise<void>;
-  createNote: () => Promise<void>;
+  /** Create a note in `folderId`; defaults to the selected folder view. */
+  createNote: (folderId?: string | null) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   applyNoteUpdate: (note: Note) => void;
   removeNoteLocal: (id: string) => void;
@@ -80,6 +84,7 @@ export const useStore = create<Store>((set, get) => ({
   settings: null,
   queue: null,
   view: { kind: "all", key: null },
+  tagFilter: [],
   searchQuery: "",
   searchMode: "keyword",
   searchResults: null,
@@ -109,11 +114,10 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   refreshNotes: async () => {
-    const { view } = get();
-    const notes = await api.listNotes(
-      view.kind === "folder" ? view.key : null,
-      view.kind === "tag" ? (view.tags ?? []) : null,
-    );
+    // The explorer tree always shows every folder at once, so notes are
+    // fetched across all folders; the tag filter is the only server-side cut.
+    const { tagFilter } = get();
+    const notes = await api.listNotes(null, tagFilter.length > 0 ? tagFilter : null);
     set({ notes });
   },
 
@@ -122,6 +126,11 @@ export const useStore = create<Store>((set, get) => ({
 
   selectView: (view) => {
     set({ view, searchQuery: "", searchResults: null });
+    void get().refreshNotes();
+  },
+
+  setTagFilter: (tagFilter) => {
+    set({ tagFilter, searchQuery: "", searchResults: null });
     void get().refreshNotes();
   },
 
@@ -138,10 +147,12 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  createNote: async () => {
+  createNote: async (folderId) => {
     const { view } = get();
+    const target =
+      folderId !== undefined ? folderId : view.kind === "folder" ? view.key : null;
     try {
-      const note = await api.createNote(view.kind === "folder" ? view.key : null);
+      const note = await api.createNote(target);
       set((s) => ({ notes: [note, ...s.notes], selectedNote: note }));
     } catch (e) {
       get().toast(String(e), "error");

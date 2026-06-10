@@ -286,6 +286,16 @@ body {
   font-family: var(--font-sans);
   user-select: none;
   cursor: default;
+  /* Native controls (time fields, checkboxes) pick up the theme accent. */
+  accent-color: var(--color-clay-500);
+}
+
+/* Scrollable rows that shouldn't show a scrollbar (e.g. tag strips). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 input,

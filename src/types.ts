@@ -41,6 +41,10 @@ export interface QueueStatus {
   sweep_active: boolean;
   embedder_ready: boolean;
   embedder_state: "cold" | "downloading" | "loading" | "ready" | "error";
+  /** Live label of what the AI worker is doing right now, null when idle. */
+  current_activity: string | null;
+  /** Note the live activity targets, when it's a single note. */
+  current_note_id: string | null;
 }
 
 export interface AppSettings {
@@ -84,11 +88,9 @@ export interface CollectionSummary {
 export type SearchMode = "keyword" | "semantic";
 
 export interface View {
-  kind: "all" | "folder" | "tag";
+  kind: "all" | "folder";
   /** Folder id when kind === "folder". */
   key: string | null;
-  /** Selected tags when kind === "tag" — notes must carry all of them. */
-  tags?: string[];
 }
 
 export interface DownloadProgress {

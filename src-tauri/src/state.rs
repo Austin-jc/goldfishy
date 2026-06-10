@@ -48,4 +48,8 @@ pub struct AppState {
     pub llm_cooldown_until: Arc<AtomicI64>,
     /// True while a manual "Sync / Re-index" sweep is draining the queues.
     pub sweep_active: Arc<AtomicBool>,
+    /// What the worker is doing right now: (human label, note id when the
+    /// work targets a single note); None when idle. Only ever held for an
+    /// instant — safe to read from async status commands.
+    pub current_activity: Arc<Mutex<Option<(String, Option<String>)>>>,
 }

@@ -5,26 +5,51 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Clock,
+  FilePlus,
   FileText,
   Folder as FolderIcon,
+  FolderOpen,
   FolderPlus,
   Inbox,
+  Loader2,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Plus,
   Settings,
+  Sparkles,
   Tag,
   Trash2,
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
+import { relativeTime, stripMarkdown } from "../utils";
 import GoldfishLogo from "./GoldfishLogo";
 import { NoteItem, SearchBar, SummaryBar } from "./NoteList";
 import type { Folder, Note } from "../types";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 480;
+const EXPANDED_KEY = "nn.expandedFolders";
+
+function loadExpanded(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+/** Everything the recursive tree rows need, bundled to avoid prop drift. */
+interface TreeCtx {
+  notesByFolder: Map<string | null, Note[]>;
+  childrenOf: Map<string | null, Folder[]>;
+  subtreeCounts: Map<string, number>;
+  filterActive: boolean;
+  isExpanded: (id: string) => boolean;
+  setExpanded: (id: string, open: boolean) => void;
+}
 
 export default function Sidebar() {
   const folders = useStore((s) => s.folders);
@@ -32,14 +57,19 @@ export default function Sidebar() {
   const view = useStore((s) => s.view);
   const queue = useStore((s) => s.queue);
   const notes = useStore((s) => s.notes);
+  const tagFilter = useStore((s) => s.tagFilter);
   const searchResults = useStore((s) => s.searchResults);
   const selectView = useStore((s) => s.selectView);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const collapsed = useStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
+  const selectedNoteId = useStore((s) => s.selectedNote?.id ?? null);
+  const settings = useStore((s) => s.settings);
   const [addingRoot, setAddingRoot] = useState(false);
-  const [foldersOpen, setFoldersOpen] = useState(true);
-  const [tagsOpen, setTagsOpen] = useState(true);
+  const [titlingAll, setTitlingAll] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(
+    () => localStorage.getItem("nn.tagsOpen") !== "0",
+  );
 
   const [width, setWidth] = useState(() => {
     const v = Number(localStorage.getItem("nn.sidebarWidth"));
@@ -47,6 +77,67 @@ export default function Sidebar() {
   });
   const widthRef = useRef(width);
   widthRef.current = width;
+
+  // User-toggled expansion, persisted. Default is expanded.
+  const [expanded, setExpandedState] = useState<Record<string, boolean>>(loadExpanded);
+  // Transient expansion while a tag filter is active — folders with matches
+  // open up so the filtered notes are actually visible.
+  const [autoOpen, setAutoOpen] = useState<Set<string>>(new Set());
+
+  const setExpanded = (id: string, open: boolean) => {
+    setExpandedState((prev) => {
+      const next = { ...prev, [id]: open };
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify(next));
+      return next;
+    });
+    if (!open) {
+      setAutoOpen((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (tagFilter.length === 0) {
+      setAutoOpen((prev) => (prev.size > 0 ? new Set() : prev));
+      return;
+    }
+    const byId = new Map(folders.map((f) => [f.id, f] as const));
+    const ids = new Set<string>();
+    for (const n of notes) {
+      let cur = n.folder_id ? byId.get(n.folder_id) : undefined;
+      while (cur) {
+        ids.add(cur.id);
+        cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+      }
+    }
+    setAutoOpen(ids);
+  }, [tagFilter, notes, folders]);
+
+  // Reveal the selected note: expand its folder chain (e.g. after opening a
+  // note from search, the queue popover, or an action item).
+  useEffect(() => {
+    const st = useStore.getState();
+    const fid = st.selectedNote?.folder_id;
+    if (!fid) return;
+    const byId = new Map(st.folders.map((f) => [f.id, f] as const));
+    const chain: string[] = [];
+    let cur = byId.get(fid);
+    while (cur) {
+      chain.push(cur.id);
+      cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+    }
+    setExpandedState((prev) => {
+      if (!chain.some((id) => prev[id] === false)) return prev;
+      const next = { ...prev };
+      for (const id of chain) next[id] = true;
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [selectedNoteId]);
 
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
@@ -63,28 +154,71 @@ export default function Sidebar() {
     window.addEventListener("pointerup", up);
   };
 
-  const roots = useMemo(() => folders.filter((f) => !f.parent_id), [folders]);
+  const ctx: TreeCtx = useMemo(() => {
+    const notesByFolder = new Map<string | null, Note[]>();
+    for (const n of notes) {
+      const k = n.folder_id ?? null;
+      const arr = notesByFolder.get(k);
+      if (arr) arr.push(n);
+      else notesByFolder.set(k, [n]);
+    }
+    const childrenOf = new Map<string | null, Folder[]>();
+    for (const f of folders) {
+      const k = f.parent_id ?? null;
+      const arr = childrenOf.get(k);
+      if (arr) arr.push(f);
+      else childrenOf.set(k, [f]);
+    }
+    const subtreeCounts = new Map<string, number>();
+    const walk = (f: Folder): number => {
+      let c = notesByFolder.get(f.id)?.length ?? 0;
+      for (const ch of childrenOf.get(f.id) ?? []) c += walk(ch);
+      subtreeCounts.set(f.id, c);
+      return c;
+    };
+    for (const root of childrenOf.get(null) ?? []) walk(root);
+    return {
+      notesByFolder,
+      childrenOf,
+      subtreeCounts,
+      filterActive: tagFilter.length > 0,
+      isExpanded: (id: string) => autoOpen.has(id) || expanded[id] !== false,
+      setExpanded,
+    };
+  }, [notes, folders, tagFilter, expanded, autoOpen]);
+
+  const roots = ctx.childrenOf.get(null) ?? [];
+  const unfiled = ctx.notesByFolder.get(null) ?? [];
 
   const busy =
     (queue?.embed_pending ?? 0) + (queue?.llm_pending ?? 0) > 0 || queue?.sweep_active;
 
-  const shown = searchResults ?? notes;
-  const selectedTags = view.kind === "tag" ? (view.tags ?? []) : [];
-  const viewName =
-    view.kind === "all"
-      ? "All Notes"
-      : view.kind === "tag"
-        ? selectedTags.map((t) => `#${t}`).join(" ")
-        : (folders.find((f) => f.id === view.key)?.name ?? "Folder");
+  const untitledCount = useMemo(
+    () => notes.filter((n) => !n.title.trim() && n.content.trim()).length,
+    [notes],
+  );
+
+  const titleAll = async () => {
+    setTitlingAll(true);
+    try {
+      const n = await api.aiTitleUntitled();
+      useStore.getState().toast(
+        n > 0 ? `Auto-titled ${n} note${n === 1 ? "" : "s"}` : "No notes needed a title",
+        "success",
+      );
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setTitlingAll(false);
+    }
+  };
 
   // Click to toggle: add to the selection, click again to remove.
   const toggleTag = (tag: string) => {
-    const next = selectedTags.includes(tag)
-      ? selectedTags.filter((t) => t !== tag)
-      : [...selectedTags, tag];
-    selectView(
-      next.length > 0 ? { kind: "tag", key: null, tags: next } : { kind: "all", key: null },
-    );
+    const next = tagFilter.includes(tag)
+      ? tagFilter.filter((t) => t !== tag)
+      : [...tagFilter, tag];
+    useStore.getState().setTagFilter(next);
   };
 
   if (collapsed) {
@@ -148,121 +282,156 @@ export default function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* navigation */}
-        <div className="px-2">
-          <button
-            onClick={() => selectView({ kind: "all", key: null })}
-            className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-              view.kind === "all"
-                ? "bg-clay-600/15 text-clay-300"
-                : "text-stone-300 hover:bg-stone-800/60"
-            }`}
-          >
-            <Inbox size={15} />
-            All Notes
-          </button>
-
-          <div className="mt-3 flex items-center justify-between px-2.5">
-            <button
-              onClick={() => setFoldersOpen(!foldersOpen)}
-              className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-300"
-            >
-              {foldersOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-              Folders
-            </button>
-            <button
-              onClick={() => {
-                setFoldersOpen(true);
-                setAddingRoot(true);
-              }}
-              className="cursor-pointer text-stone-500 transition-colors hover:text-stone-200"
-              title="New folder"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          {addingRoot && (
-            <FolderNameInput
-              onDone={async (name) => {
-                setAddingRoot(false);
-                if (name) {
-                  await api.createFolder(name, null);
-                  await useStore.getState().refreshFolders();
-                }
-              }}
-            />
-          )}
-          {foldersOpen && (
-            <div className="mt-0.5">
-              {roots.map((f) => (
-                <FolderRow key={f.id} folder={f} depth={0} />
+        {searchResults ? (
+          <div className="mt-1">
+            <div className="px-4 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                Results · {searchResults.length}
+              </span>
+            </div>
+            <div className="space-y-0.5 px-2 pb-2">
+              {searchResults.map((n) => (
+                <NoteItem key={n.id} note={n} />
               ))}
-              {roots.length === 0 && !addingRoot && (
-                <p className="px-2.5 py-1 text-xs text-stone-600">No folders yet</p>
-              )}
             </div>
-          )}
-
-          <div className="mt-3 px-2.5">
-            <button
-              onClick={() => setTagsOpen(!tagsOpen)}
-              className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-300"
+            {searchResults.length === 0 && (
+              <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-stone-600">
+                <FileText size={20} strokeWidth={1.5} />
+                <p className="text-xs">No results</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="px-2 pb-2">
+            {/* the explorer root — hover it for a new root folder */}
+            <div
+              className={`group flex items-center rounded-lg transition-colors ${
+                view.kind === "all" ? "bg-clay-600/15" : "hover:bg-stone-800/60"
+              }`}
             >
-              {tagsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-              Tags
-            </button>
-          </div>
-          {tagsOpen && (
-            <div className="mt-0.5">
-              {tags.map((t) => {
-                const active = selectedTags.includes(t.tag);
-                return (
-                  <button
-                    key={t.tag}
-                    onClick={() => toggleTag(t.tag)}
-                    title={active ? "Remove from filter" : "Add to filter (combines with other selected tags)"}
-                    className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1 text-sm transition-colors ${
-                      active
-                        ? "bg-clay-600/15 text-clay-300"
-                        : "text-stone-400 hover:bg-stone-800/60"
-                    }`}
-                  >
-                    <Tag size={13} className="shrink-0" />
-                    <span className="truncate">{t.tag}</span>
-                    {active && <Check size={12} className="shrink-0" />}
-                    <span className="ml-auto text-[10px] text-stone-600">{t.count}</span>
-                  </button>
-                );
-              })}
-              {tags.length === 0 && (
-                <p className="px-2.5 py-1 text-xs text-stone-600">No tags yet</p>
+              <button
+                onClick={() => selectView({ kind: "all", key: null })}
+                className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
+                  view.kind === "all" ? "text-clay-300" : "text-stone-300"
+                }`}
+              >
+                <Inbox size={15} />
+                All Notes
+              </button>
+              <span className="mr-2 text-[10px] text-stone-600 group-hover:hidden">
+                {notes.length}
+              </span>
+              <button
+                onClick={() => setAddingRoot(true)}
+                className="mr-1.5 hidden shrink-0 cursor-pointer rounded p-0.5 text-stone-500 hover:text-stone-200 group-hover:block"
+                title="New folder"
+              >
+                <FolderPlus size={13} />
+              </button>
+            </div>
+            {addingRoot && (
+              <FolderNameInput
+                onDone={async (name) => {
+                  setAddingRoot(false);
+                  if (name) {
+                    await api.createFolder(name, null);
+                    await useStore.getState().refreshFolders();
+                  }
+                }}
+              />
+            )}
+
+            <div className="-mx-2">
+              <SummaryBar />
+            </div>
+
+            {/* one-click cleanup whenever untitled notes pile up */}
+            {settings?.llm_backend !== "none" &&
+              tagFilter.length === 0 &&
+              untitledCount > 0 && (
+                <button
+                  onClick={() => void titleAll()}
+                  disabled={titlingAll}
+                  title="Generate a title for every untitled note"
+                  className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-clay-400 transition-colors hover:text-clay-300 disabled:opacity-60"
+                >
+                  {titlingAll ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={11} />
+                  )}
+                  {titlingAll
+                    ? "Titling…"
+                    : `Auto-title ${untitledCount} untitled note${untitledCount === 1 ? "" : "s"}`}
+                </button>
+              )}
+
+            {/* file explorer — folders with their notes nested inside */}
+            <div className="mt-1">
+              {roots.map((f) => (
+                <FolderNode key={f.id} folder={f} depth={0} ctx={ctx} />
+              ))}
+              {unfiled.map((n) => (
+                <TreeNoteRow key={n.id} note={n} depth={0} />
+              ))}
+              {roots.length === 0 && unfiled.length === 0 && !addingRoot && (
+                <div className="flex flex-col items-center gap-2 px-6 py-8 text-center text-stone-600">
+                  <FileText size={20} strokeWidth={1.5} />
+                  <p className="text-xs">
+                    {ctx.filterActive
+                      ? "No notes carry all the selected tags"
+                      : "No notes here yet. Create one!"}
+                  </p>
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* notes in the current view / search results */}
-        <div className="mt-5">
-          <div className="flex items-center justify-between px-4 pb-1">
-            <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-              {searchResults ? `Results · ${shown.length}` : `${viewName} · ${shown.length}`}
-            </span>
-          </div>
-          {!searchResults && <SummaryBar />}
-          <div className="space-y-0.5 px-2 pb-2">
-            {shown.map((n) => (
-              <NoteItem key={n.id} note={n} />
-            ))}
-          </div>
-          {shown.length === 0 && (
-            <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-stone-600">
-              <FileText size={20} strokeWidth={1.5} />
-              <p className="text-xs">
-                {searchResults ? "No results" : "No notes here yet. Create one!"}
-              </p>
+            {/* tags — a filter over the explorer, not a destination */}
+            <div className="mt-4 flex items-center justify-between px-2.5">
+              <button
+                onClick={() => {
+                  setTagsOpen(!tagsOpen);
+                  localStorage.setItem("nn.tagsOpen", tagsOpen ? "0" : "1");
+                }}
+                title="Filter the notes above by tag"
+                className="flex cursor-pointer items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500 transition-colors hover:text-stone-300"
+              >
+                {tagsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                Tags
+                {tagFilter.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-clay-600/25 px-1.5 py-px text-[9px] font-semibold normal-case tracking-normal text-clay-300">
+                    {tagFilter.length} selected
+                  </span>
+                )}
+              </button>
+              {tagFilter.length > 0 && (
+                <button
+                  onClick={() => useStore.getState().setTagFilter([])}
+                  className="cursor-pointer text-[10px] text-stone-500 transition-colors hover:text-clay-300"
+                  title="Clear the tag filter"
+                >
+                  clear
+                </button>
+              )}
             </div>
-          )}
-        </div>
+            {tagsOpen && (
+              <div className="mt-0.5">
+                {tags.map((t) => (
+                  <TagRow
+                    key={t.tag}
+                    tag={t.tag}
+                    count={t.count}
+                    active={tagFilter.includes(t.tag)}
+                    onToggle={() => toggleTag(t.tag)}
+                  />
+                ))}
+                {tags.length === 0 && (
+                  <p className="py-1 pl-[21px] text-xs text-stone-600">No tags yet</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* status footer + queue popover */}
@@ -275,6 +444,74 @@ export default function Sidebar() {
         title="Drag to resize"
       />
     </aside>
+  );
+}
+
+function TagRow({
+  tag,
+  count,
+  active,
+  onToggle,
+}: {
+  tag: string;
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const remove = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 2500);
+      return;
+    }
+    try {
+      await api.deleteTag(tag);
+      const st = useStore.getState();
+      if (st.tagFilter.includes(tag)) {
+        st.setTagFilter(st.tagFilter.filter((t) => t !== tag));
+      } else {
+        void st.refreshNotes();
+      }
+      void st.refreshTags();
+      if (st.selectedNote) void st.selectNote(st.selectedNote.id);
+      st.toast(`Tag “${tag}” removed from all notes`, "success");
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  return (
+    <div
+      className={`group flex items-center rounded-lg transition-colors ${
+        active ? "bg-clay-600/15" : "hover:bg-stone-800/60"
+      }`}
+    >
+      <button
+        onClick={onToggle}
+        title={active ? "Remove from filter" : "Add to filter (combines with other selected tags)"}
+        className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg py-1 pl-[21px] pr-2.5 text-sm ${
+          active ? "text-clay-300" : "text-stone-400"
+        }`}
+      >
+        <Tag size={13} className="shrink-0" />
+        <span className="truncate">{tag}</span>
+        {active && <Check size={12} className="shrink-0" />}
+        <span className="ml-auto text-[10px] text-stone-600">{count}</span>
+      </button>
+      <button
+        onClick={() => void remove()}
+        className={`mr-1.5 shrink-0 cursor-pointer rounded p-0.5 ${
+          confirmDelete
+            ? "text-red-400"
+            : "hidden text-stone-500 hover:text-red-400 group-hover:block"
+        }`}
+        title={confirmDelete ? "Click again to delete this tag everywhere" : "Delete tag from all notes"}
+      >
+        <Trash2 size={12} />
+      </button>
+    </div>
   );
 }
 
@@ -318,6 +555,10 @@ function QueueFooter() {
   const total = queue
     ? queue.embed_stale + queue.embed_pending + queue.llm_stale + queue.llm_pending
     : 0;
+  // Counts can hit zero while the worker is still busy (e.g. action
+  // extraction runs after the note is already CLEAN) — the live activity
+  // keeps the footer clickable through that window.
+  const busy = total > 0 || Boolean(queue?.current_activity);
 
   // Refresh the list while open so rows disappear as the worker drains them.
   useEffect(() => {
@@ -329,8 +570,8 @@ function QueueFooter() {
   }, [open, queue]);
 
   useEffect(() => {
-    if (total === 0) setOpen(false);
-  }, [total]);
+    if (!busy) setOpen(false);
+  }, [busy]);
 
   if (!queue) return null;
 
@@ -342,13 +583,15 @@ function QueueFooter() {
         ? "Loading semantic model…"
         : queue.embedder_state === "error"
           ? "Semantic engine error — keyword search still works"
-          : queue.sweep_active
-            ? "Re-indexing…"
-            : pending > 0
-              ? "AI engine working…"
-              : total > 0
-                ? `${total} note${total === 1 ? "" : "s"} queued`
-                : "All notes up to date";
+          : queue.current_activity
+            ? queue.current_activity
+            : queue.sweep_active
+              ? "Re-indexing…"
+              : pending > 0
+                ? "AI engine working…"
+                : total > 0
+                  ? `${total} note${total === 1 ? "" : "s"} queued`
+                  : "All notes up to date";
 
   return (
     <div className="relative px-3 pb-2 pt-1">
@@ -357,8 +600,27 @@ function QueueFooter() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute bottom-full left-3 right-3 z-30 mb-1 overflow-hidden rounded-xl border border-stone-800 bg-stone-900 shadow-2xl shadow-black/60">
             <div className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-              Processing queue · {total}
+              Processing queue{total > 0 ? ` · ${total}` : ""}
             </div>
+            {queue.current_activity && (
+              <button
+                onClick={() => {
+                  const nid = queue.current_note_id;
+                  if (!nid) return;
+                  setOpen(false);
+                  void useStore.getState().selectNote(nid);
+                }}
+                title={queue.current_note_id ? "Open the note being processed" : undefined}
+                className={`flex w-full items-center gap-1.5 px-3 pb-1 text-left ${
+                  queue.current_note_id ? "cursor-pointer hover:text-sage-200" : "cursor-default"
+                }`}
+              >
+                <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-sage-400" />
+                <span className="truncate text-[10px] text-sage-300">
+                  {queue.current_activity}
+                </span>
+              </button>
+            )}
             <div className="max-h-64 overflow-y-auto p-1">
               {queued.map((n) => (
                 <button
@@ -367,6 +629,7 @@ function QueueFooter() {
                     setOpen(false);
                     void useStore.getState().selectNote(n.id);
                   }}
+                  title="Open this note"
                   className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-stone-800/70"
                 >
                   <span className="min-w-0 flex-1 truncate text-xs text-stone-200">
@@ -409,17 +672,17 @@ function QueueFooter() {
       )}
       <button
         onClick={() => {
-          if (total > 0) setOpen(!open);
+          if (busy) setOpen(!open);
         }}
         className={`flex w-full items-center gap-1 rounded-lg px-1.5 py-1 text-left text-[10px] text-stone-600 ${
-          total > 0
+          busy
             ? "cursor-pointer transition-colors hover:bg-stone-800/60 hover:text-stone-400"
             : "cursor-default"
         }`}
-        title={total > 0 ? "Show queued notes" : undefined}
+        title={busy ? "Show queued notes" : undefined}
       >
         <span className="truncate">{statusText}</span>
-        {total > 0 && (
+        {busy && (
           <ChevronUp
             size={11}
             className={`ml-auto shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
@@ -454,17 +717,136 @@ function FolderNameInput({
   );
 }
 
-function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
-  const folders = useStore((s) => s.folders);
+const PREVIEW_DELAY_MS = 450;
+const PREVIEW_W = 264;
+
+/** A note leaf inside the explorer tree: status icons + hover preview card. */
+function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
+  const active = useStore((s) => s.selectedNote?.id === note.id);
+  const [preview, setPreview] = useState<{ left: number; top: number } | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const working = note.llm_status === "PENDING" || note.embedding_status === "PENDING";
+  const queued =
+    !working && (note.llm_status === "STALE" || note.embedding_status === "STALE");
+
+  const startPreview = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      setPreview({
+        left: Math.min(rect.right + 10, window.innerWidth - PREVIEW_W - 8),
+        top: Math.max(8, Math.min(rect.top, window.innerHeight - 240)),
+      });
+    }, PREVIEW_DELAY_MS);
+  };
+  const stopPreview = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setPreview(null);
+  };
+  useEffect(() => stopPreview, []);
+
+  const snippet = stripMarkdown(note.content).slice(0, 220);
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          stopPreview();
+          void useStore.getState().selectNote(note.id);
+        }}
+        onMouseEnter={startPreview}
+        onMouseLeave={stopPreview}
+        className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg py-1 pr-2 text-left text-[12.5px] transition-colors ${
+          active
+            ? "bg-stone-800/80 text-stone-100"
+            : "text-stone-400 hover:bg-stone-800/40 hover:text-stone-200"
+        }`}
+        style={{ paddingLeft: 21 + depth * 14 }}
+      >
+        <FileText size={12} className="shrink-0 text-stone-600" />
+        <span className="truncate">{note.title || "Untitled"}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {note.llm_status === "PENDING" ? (
+            <span title="AI working on this note…" className="flex">
+              <Loader2 size={11} className="animate-spin text-sage-400" />
+            </span>
+          ) : note.embedding_status === "PENDING" ? (
+            <span title="Indexing…" className="flex">
+              <Loader2 size={11} className="animate-spin text-clay-400" />
+            </span>
+          ) : queued ? (
+            <span title="Queued for AI processing" className="flex">
+              <Clock size={10} className="text-stone-600" />
+            </span>
+          ) : null}
+        </span>
+      </button>
+      {preview && (
+        <div
+          className="fade-in pointer-events-none fixed z-50 rounded-xl border border-stone-800 bg-stone-900 p-3 shadow-2xl shadow-black/60"
+          style={{ ...preview, width: PREVIEW_W }}
+        >
+          <p className="truncate text-xs font-semibold text-stone-100">
+            {note.title || "Untitled"}
+          </p>
+          <p className="mt-0.5 text-[9px] text-stone-600">
+            edited {relativeTime(note.updated_at)}
+            {working && " · AI working…"}
+            {queued && " · queued for AI"}
+          </p>
+          {snippet ? (
+            <p className="mt-1.5 line-clamp-5 text-[11px] leading-relaxed text-stone-400">
+              {snippet}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] italic text-stone-600">Empty note</p>
+          )}
+          {note.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {note.tags.map((t) => (
+                <span
+                  key={t.tag}
+                  className={`rounded-full px-1.5 py-px text-[9px] ${
+                    t.source === "ai"
+                      ? "border border-sage-700/60 text-sage-400"
+                      : "bg-stone-800 text-stone-400"
+                  }`}
+                >
+                  {t.tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function FolderNode({
+  folder,
+  depth,
+  ctx,
+}: {
+  folder: Folder;
+  depth: number;
+  ctx: TreeCtx;
+}) {
   const view = useStore((s) => s.view);
   const selectView = useStore((s) => s.selectView);
-  const [expanded, setExpanded] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const children = folders.filter((f) => f.parent_id === folder.id);
+  const children = ctx.childrenOf.get(folder.id) ?? [];
+  const folderNotes = ctx.notesByFolder.get(folder.id) ?? [];
+  const count = ctx.subtreeCounts.get(folder.id) ?? 0;
+  const hasContents = children.length > 0 || folderNotes.length > 0;
+  const expanded = ctx.isExpanded(folder.id);
   const active = view.kind === "folder" && view.key === folder.id;
+  // With a tag filter on, folders with no matches anywhere below recede.
+  const dimmed = ctx.filterActive && count === 0;
 
   if (renaming) {
     return (
@@ -486,15 +868,15 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
       <div
         className={`group flex items-center gap-1 rounded-lg px-1 py-1 text-sm transition-colors ${
           active ? "bg-clay-600/15 text-clay-300" : "text-stone-300 hover:bg-stone-800/60"
-        }`}
+        } ${dimmed ? "opacity-50" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
       >
         <button
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => ctx.setExpanded(folder.id, !expanded)}
           className="cursor-pointer text-stone-600 hover:text-stone-300"
           tabIndex={-1}
         >
-          {children.length > 0 ? (
+          {hasContents ? (
             expanded ? (
               <ChevronDown size={13} />
             ) : (
@@ -505,13 +887,33 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
           )}
         </button>
         <button
-          onClick={() => selectView({ kind: "folder", key: folder.id })}
+          onClick={() => {
+            selectView({ kind: "folder", key: folder.id });
+            if (!expanded) ctx.setExpanded(folder.id, true);
+          }}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
         >
-          <FolderIcon size={13} className="shrink-0 text-stone-500" />
+          {expanded && hasContents ? (
+            <FolderOpen size={13} className="shrink-0 text-stone-500" />
+          ) : (
+            <FolderIcon size={13} className="shrink-0 text-stone-500" />
+          )}
           <span className="truncate">{folder.name}</span>
         </button>
+        <span className="shrink-0 text-[10px] text-stone-600 group-hover:hidden">
+          {count > 0 ? count : ""}
+        </span>
         <span className="hidden shrink-0 items-center gap-1 group-hover:flex">
+          <button
+            onClick={() => {
+              ctx.setExpanded(folder.id, true);
+              void useStore.getState().createNote(folder.id);
+            }}
+            className="cursor-pointer text-stone-500 hover:text-stone-200"
+            title="New note in this folder"
+          >
+            <FilePlus size={12} />
+          </button>
           <button
             onClick={() => setAddingChild(true)}
             className="cursor-pointer text-stone-500 hover:text-stone-200"
@@ -535,6 +937,7 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
               }
               await api.deleteFolder(folder.id);
               await useStore.getState().refreshFolders();
+              await useStore.getState().refreshNotes();
               if (active) selectView({ kind: "all", key: null });
             }}
             className={
@@ -542,7 +945,7 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
                 ? "cursor-pointer text-red-400"
                 : "cursor-pointer text-stone-500 hover:text-red-400"
             }
-            title={confirmDelete ? "Click again to delete" : "Delete folder"}
+            title={confirmDelete ? "Click again to delete" : "Delete folder (notes move to root)"}
           >
             <Trash2 size={12} />
           </button>
@@ -556,14 +959,22 @@ function FolderRow({ folder, depth }: { folder: Folder; depth: number }) {
               if (name) {
                 await api.createFolder(name, folder.id);
                 await useStore.getState().refreshFolders();
-                setExpanded(true);
+                ctx.setExpanded(folder.id, true);
               }
             }}
           />
         </div>
       )}
-      {expanded &&
-        children.map((c) => <FolderRow key={c.id} folder={c} depth={depth + 1} />)}
+      {expanded && (
+        <>
+          {children.map((c) => (
+            <FolderNode key={c.id} folder={c} depth={depth + 1} ctx={ctx} />
+          ))}
+          {folderNotes.map((n) => (
+            <TreeNoteRow key={n.id} note={n} depth={depth + 1} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

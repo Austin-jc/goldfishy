@@ -30,6 +30,7 @@ pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
     // Phase is an atomic on purpose: never block status on the embedder mutex,
     // which is held for the whole duration of a download or an embed batch.
     let phase = state.embedder_phase.load(Ordering::Relaxed);
+    let activity = state.current_activity.lock().unwrap().clone();
     let status = QueueStatus {
         embed_stale: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'STALE'")?,
         embed_pending: count("SELECT COUNT(*) FROM notes WHERE embedding_status = 'PENDING'")?,
@@ -38,8 +39,17 @@ pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
         sweep_active: state.sweep_active.load(Ordering::Relaxed),
         embedder_ready: phase == crate::state::embedder_phase::READY,
         embedder_state: crate::state::embedder_phase::as_str(phase).to_string(),
+        current_activity: activity.as_ref().map(|(label, _)| label.clone()),
+        current_note_id: activity.and_then(|(_, id)| id),
     };
     Ok(status)
+}
+
+/// Update the live "what is the worker doing" label (+ target note) and broadcast it.
+pub fn set_activity(app: &AppHandle, activity: Option<(String, Option<String>)>) {
+    let state = app.state::<AppState>();
+    *state.current_activity.lock().unwrap() = activity;
+    emit_status(app);
 }
 
 pub fn emit_status(app: &AppHandle) {
@@ -157,7 +167,21 @@ async fn tick(app: &AppHandle) -> Result<()> {
                     )?;
                 }
             }
-            emit_status(app);
+            set_activity(
+                app,
+                Some((
+                    format!(
+                        "Indexing {} note{}…",
+                        batch.len(),
+                        if batch.len() == 1 { "" } else { "s" }
+                    ),
+                    if batch.len() == 1 {
+                        Some(batch[0].0.clone())
+                    } else {
+                        None
+                    },
+                )),
+            );
 
             let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
             match embed::embed_texts(app.clone(), texts).await {
@@ -190,7 +214,7 @@ async fn tick(app: &AppHandle) -> Result<()> {
                     let _ = app.emit("worker-error", format!("Embedding pipeline: {e:#}"));
                 }
             }
-            emit_status(app);
+            set_activity(app, None);
             // Queue 1 has strict priority — Queue 2 waits for the next tick.
             return Ok(());
         }
@@ -202,20 +226,20 @@ async fn tick(app: &AppHandle) -> Result<()> {
         let idle_ms = now - state.last_activity.load(Ordering::Relaxed);
         let debounce_ms = settings.llm_debounce_secs as i64 * 1000;
         if sweep || idle_ms >= debounce_ms {
-            let next: Option<String> = {
+            let next: Option<(String, String)> = {
                 let db = state.db.lock().unwrap();
                 let cutoff = if sweep { now } else { now - debounce_ms };
                 db.query_row(
-                    "SELECT id FROM notes WHERE llm_status = 'STALE' AND updated_at <= ?1
+                    "SELECT id, title FROM notes WHERE llm_status = 'STALE' AND updated_at <= ?1
                      ORDER BY updated_at ASC LIMIT 1",
                     params![cutoff],
-                    |r| r.get(0),
+                    |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .map(Some)
                 .unwrap_or(None)
             };
 
-            if let Some(id) = next {
+            if let Some((id, title)) = next {
                 {
                     let db = state.db.lock().unwrap();
                     db.execute(
@@ -223,11 +247,37 @@ async fn tick(app: &AppHandle) -> Result<()> {
                         params![id],
                     )?;
                 }
-                emit_status(app);
+                // Untitled notes get an AI title first, so everything
+                // downstream (labels, tagging, search) sees it.
+                let mut label = title.trim().to_string();
+                if label.is_empty() {
+                    label = "Untitled".to_string();
+                    set_activity(
+                        app,
+                        Some(("Titling an untitled note…".to_string(), Some(id.clone()))),
+                    );
+                    match crate::ai::generate_title(app, &id).await {
+                        Ok(note) => {
+                            if !note.title.trim().is_empty() {
+                                label = note.title.clone();
+                            }
+                            let _ = app.emit("note-updated", note);
+                        }
+                        Err(e) => eprintln!("[title] generation failed for {id}: {e:#}"),
+                    }
+                }
+                set_activity(app, Some((format!("Organizing “{label}”…"), Some(id.clone()))));
                 match crate::ai::auto_tag_and_route(app, &id).await {
                     Ok(note) => {
                         let _ = app.emit("note-updated", note);
                         if settings.extract_actions {
+                            set_activity(
+                                app,
+                                Some((
+                                    format!("Extracting actions from “{label}”…"),
+                                    Some(id.clone()),
+                                )),
+                            );
                             if let Err(e) = crate::ai::extract_actions(app, &id).await {
                                 eprintln!("[actions] extraction failed for {id}: {e:#}");
                             }
@@ -245,7 +295,7 @@ async fn tick(app: &AppHandle) -> Result<()> {
                         let _ = app.emit("worker-error", format!("AI pipeline: {e:#}"));
                     }
                 }
-                emit_status(app);
+                set_activity(app, None);
                 return Ok(());
             }
         }
