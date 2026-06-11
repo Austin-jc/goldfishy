@@ -102,6 +102,7 @@ function EditorInner({ noteId }: { noteId: string }) {
   const dirtyRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<TiptapEditor | null>(null);
 
   // A brand-new note starts in the title field.
   useEffect(() => {
@@ -123,6 +124,13 @@ function EditorInner({ noteId }: { noteId: string }) {
   const saveNow = useCallback(async () => {
     if (!dirtyRef.current) return;
     dirtyRef.current = false;
+    // Markdown is serialized once per save, not per keystroke (typing latency
+    // grows with note size otherwise). Tiptap only destroys the editor a tick
+    // after unmount, so the unmount flush still sees a live instance.
+    const ed = editorRef.current;
+    if (ed && !ed.isDestroyed) {
+      contentRef.current = ed.storage.markdown.getMarkdown();
+    }
     try {
       const updated = await api.updateNote(noteId, titleRef.current, contentRef.current);
       useStore.getState().applyNoteUpdate(updated);
@@ -177,11 +185,9 @@ function EditorInner({ noteId }: { noteId: string }) {
         return true;
       },
     },
-    onUpdate: ({ editor }) => {
-      contentRef.current = editor.storage.markdown.getMarkdown();
-      scheduleSave();
-    },
+    onUpdate: () => scheduleSave(),
   });
+  editorRef.current = editor;
 
   // Flush pending edits when the note (or app view) changes.
   useEffect(() => {

@@ -6,7 +6,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 
 1. ✅ **Single source of truth for prompts + prompt versioning** (AI-3) — replaces the error-prone `ai.rs` ↔ `bench/src/prompts.ts` hand-mirror. *Adopting this changes golden rule 5 in `conventions.md`.* — **done:** `prompts/prompts.json` + `prompts.rs` loader; version stamped into bench results.
 2. ✅ **Preview/undo for AI rewrites** (AI-1, UX-6) — three independent research streams converged here; bulletify currently replaces text with only a buried snapshot as recourse. — **done:** Auto-bullet now shows a sage-framed keep/discard preview; nothing is written until Keep (which still snapshots first).
-3. **Stop serializing Markdown per keystroke** (PERF-1) — typing latency, small fix.
+3. ✅ **Stop serializing Markdown per keystroke** (PERF-1) — typing latency, small fix. — **done:** `getMarkdown()` now runs once inside the debounced `saveNow()`.
 4. **Async-ify the remaining sync commands** (PERF-2) — the other half of the startup-unresponsiveness fix; mechanical.
 5. **`list_notes` returns excerpts, not full content; don't block first paint on it** (PERF-3, PERF-16).
 6. **`PRAGMA synchronous = NORMAL`** (PERF-7) — one line, safe in WAL, faster autosaves.
@@ -88,7 +88,7 @@ Verified against the code at the cited locations. Ordered by impact-for-effort.
 
 | # | Optimization | Where | Impact | Effort |
 |---|---|---|---|---|
-| PERF-1 | Move `getMarkdown()` out of `onUpdate` (per keystroke) into the debounced `saveNow()` | `Editor.tsx` ~178 vs ~121 | **High** — typing latency, grows with note size | S |
+| ✅ PERF-1 | Move `getMarkdown()` out of `onUpdate` (per keystroke) into the debounced `saveNow()` | `Editor.tsx` ~178 vs ~121 | **High** — typing latency, grows with note size | S |
 | PERF-2 | Async-ify remaining hot sync commands: `update_note`, `list_notes`, `create_note`, `reindex_all`, `save_image_bytes`, `export_notes`, `backup_now` (sync `fn`s run on the main thread; image paste base64-decodes on it today) | `commands.rs` 61, 234, 979, 1144, 1192, 1231 | **High** — removes UI stalls during worker write bursts | S |
 | PERF-3 | `list_notes` returns ~240-char server-side excerpts, not full content (UI only uses 120–220 chars; editor loads via `get_note`); fix `duplicateNote` consumer | `db.rs` 137/205, `store.ts` 127, `Sidebar.tsx` 1017 | **High** at scale — startup, refresh, memory | M |
 | PERF-4 | `React.memo` tree rows; compute hover snippets lazily (`stripMarkdown` runs per row per render today); narrow Sidebar's `queue` subscription | `Sidebar.tsx` 90/1017, `NoteList.tsx` 212 | Med-high — sidebar CPU while worker runs | S |
