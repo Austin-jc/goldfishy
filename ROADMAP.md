@@ -38,3 +38,4 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 ## AI organization
 
 - [x] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.
+- [x] **Regenerate tags** — `ai_retag_all` re-runs the organize pipeline over every note with live per-note progress (AI tags rewritten, manual tags untouched); "regenerate" on the TAGS header (two-step confirm) and a palette command.

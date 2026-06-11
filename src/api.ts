@@ -77,6 +77,7 @@ export const api = {
   aiProcessNote: (noteId: string) => invoke<Note>("ai_process_note", { noteId }),
   aiBulletify: (noteId: string) => invoke<Note>("ai_bulletify", { noteId }),
   aiTitleUntitled: () => invoke<number>("ai_title_untitled"),
+  aiRetagAll: () => invoke<number>("ai_retag_all"),
   aiSummarizeCollection: (kind: string, key: string) =>
     invoke<string>("ai_summarize_collection", { kind, key }),
   getCollectionSummary: (kind: string, key: string) =>

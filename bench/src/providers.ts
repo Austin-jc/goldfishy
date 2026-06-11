@@ -94,9 +94,7 @@ async function chatAnthropic(m: ModelConfig, req: BuiltRequest): Promise<ChatRes
     // model's default; for always-thinking models set maxTokensFloor in config.
   };
   if (req.schema) {
-    (params as Record<string, unknown>).output_config = {
-      format: { type: "json_schema", schema: req.schema },
-    };
+    params.output_config = { format: { type: "json_schema", schema: req.schema } };
   }
   const response = await anthropic().messages.create(params);
   if (response.stop_reason === "refusal") {

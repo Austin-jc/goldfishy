@@ -741,6 +741,54 @@ pub async fn ai_title_untitled(app: AppHandle) -> CmdResult<i64> {
     Ok(titled)
 }
 
+/// Re-run the organize pipeline (AI tags + folder suggestion) over every
+/// note with content, sequentially, with live progress. AI tags are wiped
+/// and rewritten per note; manual tags are never touched. Returns how many
+/// notes were processed; stops at the first LLM error (it's systemic).
+#[tauri::command]
+pub async fn ai_retag_all(app: AppHandle) -> CmdResult<i64> {
+    let notes: Vec<(String, String)> = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id, title FROM notes
+                 WHERE TRIM(content) != '' AND deleted_at IS NULL
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(estr)?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let total = notes.len();
+    let mut done = 0i64;
+    for (i, (id, title)) in notes.iter().enumerate() {
+        let label = if title.trim().is_empty() { "Untitled" } else { title.trim() };
+        queue::set_activity(
+            &app,
+            Some((
+                format!("Re-tagging “{label}” ({}/{total})…", i + 1),
+                Some(id.clone()),
+            )),
+        );
+        match ai::auto_tag_and_route(&app, id).await {
+            Ok(note) => {
+                done += 1;
+                let _ = app.emit("note-updated", note);
+            }
+            Err(e) => {
+                queue::set_activity(&app, None);
+                return Err(format!("Stopped after {done} of {total}: {e:#}"));
+            }
+        }
+    }
+    queue::set_activity(&app, None);
+    Ok(done)
+}
+
 #[tauri::command]
 pub async fn ai_bulletify(app: AppHandle, note_id: String) -> CmdResult<Note> {
     let note = ai::bulletify(&app, &note_id).await.map_err(eanyhow)?;

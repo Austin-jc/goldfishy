@@ -117,6 +117,7 @@ pub fn run() {
             commands::delete_tag,
             commands::ai_process_note,
             commands::ai_title_untitled,
+            commands::ai_retag_all,
             commands::ai_bulletify,
             commands::ai_summarize_collection,
             commands::get_collection_summary,

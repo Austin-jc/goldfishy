@@ -21,6 +21,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  RefreshCw,
   Settings,
   Sparkles,
   Tag,
@@ -98,6 +99,8 @@ export default function Sidebar() {
   const settings = useStore((s) => s.settings);
   const [addingRoot, setAddingRoot] = useState(false);
   const [titlingAll, setTitlingAll] = useState(false);
+  const [retagging, setRetagging] = useState(false);
+  const [confirmRetag, setConfirmRetag] = useState(false);
   const [rootDropHover, setRootDropHover] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(
     () => localStorage.getItem("nn.tagsOpen") !== "0",
@@ -243,6 +246,28 @@ export default function Sidebar() {
       useStore.getState().toast(String(e), "error");
     } finally {
       setTitlingAll(false);
+    }
+  };
+
+  // Heavy (one LLM call per note) — armed with a two-step confirm.
+  const retagAll = async () => {
+    if (!confirmRetag) {
+      setConfirmRetag(true);
+      setTimeout(() => setConfirmRetag(false), 2500);
+      return;
+    }
+    setConfirmRetag(false);
+    setRetagging(true);
+    try {
+      const n = await api.aiRetagAll();
+      const st = useStore.getState();
+      void st.refreshTags();
+      void st.refreshNotes();
+      st.toast(`Re-tagged ${n} note${n === 1 ? "" : "s"}`, "success");
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setRetagging(false);
     }
   };
 
@@ -480,15 +505,40 @@ export default function Sidebar() {
                   </span>
                 )}
               </button>
-              {tagFilter.length > 0 && (
-                <button
-                  onClick={() => useStore.getState().setTagFilter([])}
-                  className="cursor-pointer text-[10px] text-stone-500 transition-colors hover:text-clay-300"
-                  title="Clear the tag filter"
-                >
-                  clear
-                </button>
-              )}
+              <span className="flex items-center gap-2">
+                {settings?.llm_backend !== "none" && notes.length > 0 && (
+                  <button
+                    onClick={() => void retagAll()}
+                    disabled={retagging}
+                    className={`flex cursor-pointer items-center gap-1 text-[10px] transition-colors ${
+                      confirmRetag
+                        ? "text-clay-300"
+                        : "text-stone-500 hover:text-clay-300"
+                    } disabled:opacity-60`}
+                    title="Regenerate AI tags for every note (manual tags are never touched)"
+                  >
+                    {retagging ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={10} />
+                    )}
+                    {retagging
+                      ? "re-tagging…"
+                      : confirmRetag
+                        ? `re-tag ${notes.length}?`
+                        : "regenerate"}
+                  </button>
+                )}
+                {tagFilter.length > 0 && (
+                  <button
+                    onClick={() => useStore.getState().setTagFilter([])}
+                    className="cursor-pointer text-[10px] text-stone-500 transition-colors hover:text-clay-300"
+                    title="Clear the tag filter"
+                  >
+                    clear
+                  </button>
+                )}
+              </span>
             </div>
             {tagsOpen && (
               <div className="mt-0.5">

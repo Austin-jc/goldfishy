@@ -63,6 +63,22 @@ function buildCommands(close: () => void): Command[] {
               }
             },
           } satisfies Command,
+          {
+            label: "Regenerate AI tags for all notes",
+            icon: <RefreshCw size={14} />,
+            run: async () => {
+              close();
+              try {
+                const n = await api.aiRetagAll();
+                const st = useStore.getState();
+                void st.refreshTags();
+                void st.refreshNotes();
+                st.toast(`Re-tagged ${n} note${n === 1 ? "" : "s"}`, "success");
+              } catch (e) {
+                useStore.getState().toast(String(e), "error");
+              }
+            },
+          } satisfies Command,
         ]
       : []),
     {

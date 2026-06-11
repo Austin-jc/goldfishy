@@ -49,9 +49,7 @@ export async function judgeOutput(
         content: `${RUBRICS[feature]}\n\n<input>\n${input}\n</input>\n\n<candidate_output>\n${output}\n</candidate_output>`,
       },
     ],
-  };
-  (params as Record<string, unknown>).output_config = {
-    format: { type: "json_schema", schema: JUDGE_SCHEMA },
+    output_config: { format: { type: "json_schema", schema: JUDGE_SCHEMA } },
   };
   const response = await anthropic().messages.create(params);
   const text = response.content
