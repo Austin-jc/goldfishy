@@ -1,6 +1,6 @@
 # GoldFishy — Engineering Handoff
 
-Working knowledge for continuing testing, fixes, and improvements. For product-level docs see `README.md` / `USER_GUIDE.md`.
+Working knowledge for continuing testing, fixes, and improvements. For product-level docs see `README.md` / `USER_GUIDE.md`; for stable architecture, conventions, motivations, and the research-backed improvements backlog see [`docs/`](docs/README.md).
 
 ## Stack & layout
 
@@ -66,7 +66,9 @@ Everything is built from three CSS-variable ramps; **never hardcode a hex in a c
 
 Defaults live in `@theme` in `index.css`; each theme is a `[data-theme="x"]` block overriding the same variables (+ `color-scheme` for native controls). Tailwind v4 emits `var()` refs, so overrides retheme everything live. To add a theme: one CSS block + one entry in `themes.ts`. Applied via `document.documentElement.dataset.theme`, persisted as `nn.theme`. Errors stay fixed dark-red with light-red text (readable on every theme).
 
-UI conventions: no borders between regions — tone shifts + whitespace; popover pattern = `fixed inset-0` click-catcher + absolute panel (see QueueFooter/FolderPicker; DueDatePicker uses `fixed` + anchor rect so the scroll container can't clip it); formatting toolbar is a Tiptap `BubbleMenu` on text selection only; lucide icons (v1.17 — check `node_modules/lucide-react/dist/esm/icons/` before using a name). localStorage keys: `nn.theme`, `nn.sidebarWidth`, `nn.sidebarCollapsed`, `nn.expandedFolders`, `nn.tagsOpen`, `nn.notesOpen`.
+UI conventions: no borders between regions — tone shifts + whitespace; popover pattern = `fixed inset-0` click-catcher + absolute panel (see QueueFooter/FolderPicker; DueDatePicker uses `fixed` + anchor rect so the scroll container can't clip it); formatting toolbar is a Tiptap `BubbleMenu` on text selection only; lucide icons (v1.17 — check `node_modules/lucide-react/dist/esm/icons/` before using a name). localStorage keys: `nn.theme`, `nn.sidebarWidth`, `nn.sidebarCollapsed`, `nn.expandedFolders`, `nn.tagsOpen`, `nn.notesOpen`, `nn.zoom`.
+
+**Webview zoom**: ⌘+/⌘−/⌘0 set whole-webview zoom (`getCurrentWebview().setZoom`, 0.5–2.0 in 0.1 steps), persisted as `nn.zoom` and re-applied on launch (`App.tsx`); main window only (capture window is fixed-size). Needs `core:webview:allow-set-webview-zoom` in `capabilities/default.json`.
 
 **Sidebar model**: the sidebar is a file explorer — folders expand to show subfolders + their notes; unfiled notes sit at root. `store.view` is only `all | folder` (highlight, new-note target, summary scope); tags are no longer a view but an AND filter (`store.tagFilter`) applied server-side in `refreshNotes` (which always fetches across all folders). Active tag filter auto-expands folders with matches and dims the rest; expansion is otherwise user-toggled and persisted. `delete_tag` removes a tag from every note (+ its cached summary). Flat `NoteItem` cards are used only for search results.
 
@@ -100,6 +102,8 @@ npm run build            # tsc + vite — the frontend type/build check
 cargo check              # in src-tauri/ — fast backend check
 ```
 
+- Dev profile (`src-tauri/Cargo.toml`): our crate builds at `opt-level = 1`, dependencies at `opt-level = 2` — bundled SQLite and fastembed/tokenizers at -O0 made dev builds feel frozen. Changing these values triggers a one-time full dependency rebuild (several minutes); after that deps stay cached and incremental rebuilds only touch our crate.
+
 - App icon pipeline: edit `app-icon.svg` → rasterize with **sharp** (`node -e "require('sharp')('app-icon.svg',{density:300}).resize(1024,1024).png().toFile('app-icon.png')"`) → `npx tauri icon app-icon.png`. **Don't use qlmanage** — it flattens alpha to white (that was the square-dock-icon bug). macOS caches dock icons (`killall Dock`).
 - In-app logo is `GoldfishLogo.tsx` (inline SVG); favicon `public/goldfish.svg` — same geometry, update together.
 - Pushing: icon binaries exceeded git's default HTTP buffer; `http.postBuffer` is already raised in local repo config.
@@ -110,6 +114,7 @@ cargo check              # in src-tauri/ — fast backend check
   -- then: SELECT notified_at FROM action_items WHERE id='t1';
   ```
 - LLM-dependent testing needs Ollama running (`external`, `http://localhost:11434`) or a llama-server sidecar configured.
+- **Model benchmarking**: `npm run bench` (see `bench/README.md`) compares candidate LLMs on every AI feature using the app's exact prompts/schemas/parsing. `bench/src/prompts.ts` is a 1:1 port of `ai.rs` — **if you change a prompt, schema, truncation limit, or max_tokens in `ai.rs`, mirror it there** or the benchmark measures stale prompts. Supports any OpenAI-compatible server (the app's wire format) plus Claude models via the Anthropic SDK (`ANTHROPIC_API_KEY`); `--judge` adds Claude-graded quality scores.
 
 ## Editor specifics
 
