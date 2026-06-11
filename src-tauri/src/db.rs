@@ -259,6 +259,17 @@ pub fn list_notes(
 }
 
 /// Soft-deleted notes, most recently trashed first.
+/// Stored prompt overrides (settings key `prompt_overrides`), if any.
+pub fn load_prompt_overrides(conn: &Connection) -> Option<serde_json::Value> {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'prompt_overrides'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|s| serde_json::from_str(&s).ok())
+}
+
 /// Unfiled (root-level) notes, excerpt columns — the auto-arrange working set.
 /// Excerpts are plenty: the plan prompt sends ≤160-char snippets and the
 /// review modal renders one preview line. Tags ride along — they're the

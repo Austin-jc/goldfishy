@@ -22,6 +22,11 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let conn = db::open(app.handle())?;
+            // User-tuned prompts (Settings → Prompts) win over the built-in
+            // defaults; load them before anything talks to the LLM.
+            if let Some(ov) = db::load_prompt_overrides(&conn) {
+                prompts::set_overrides(ov);
+            }
             // Embedding model changed since last launch? Old vectors were
             // wiped — drain the re-embed sweep regardless of automation mode.
             let resweep = db::check_embed_model_version(&conn)?;
@@ -155,6 +160,9 @@ pub fn run() {
             commands::plan_auto_arrange,
             commands::apply_auto_arrange,
             commands::import_notes,
+            commands::get_prompt_defaults,
+            commands::get_prompt_overrides,
+            commands::set_prompt_overrides,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

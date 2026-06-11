@@ -153,6 +153,10 @@ If you'd rather not install Ollama, GoldFishy can run models directly, but this 
 
 ## 6. Settings explained
 
+**Settings → Prompts (advanced)**
+
+Every AI feature works by sending your model a written instruction — and you can read and rewrite all of them here. Want tags in French? Stricter action items? Folder names that match your own style? Open the feature's prompt, edit the text, and Save. Words in `{curly braces}` are placeholders the app fills in as it works (your note's text, today's date…) — leave those in; Save will warn you if one goes missing. Each prompt has a **reset to defaults** link, so experimenting is always safe.
+
 **Settings → Processing Mode & Timers**
 
 - **Automation mode**

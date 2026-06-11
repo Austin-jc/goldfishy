@@ -44,6 +44,7 @@ The complete list of what GoldFishy does today, grouped by area. User-facing ins
 - **Per-feature toggles** — auto-tag, auto-title, folder suggestions, action extraction each switchable; Full Auto vs Manual mode; Sync/Re-index sweep.
 - **Bring-your-own model** — managed llama-server sidecar (with in-app GGUF download) or any OpenAI-compatible server (Ollama, LM Studio); everything except LLM features works with AI disabled.
 - **Model benchmarking** — `npm run bench` compares candidate models on the app's exact prompts/schemas, optional Claude-graded quality scores.
+- **Prompt tuning** — Settings → Prompts exposes every AI feature's actual instructions (and reply cap) for editing, with per-task reset; Save validates that run-time `{placeholders}` are kept. The bench always measures the shipped defaults.
 
 ## Action items & reminders
 

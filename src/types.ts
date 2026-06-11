@@ -63,6 +63,12 @@ export interface ImportResult {
   ignored: number;
 }
 
+/**
+ * Sparse user overrides over prompts/prompts.json: {task: {field: value}}.
+ * Only string fields and max_tokens are tunable; schemas/limits are code-owned.
+ */
+export type PromptOverrides = Record<string, Record<string, string | number>>;
+
 export interface QueueStatus {
   embed_stale: number;
   embed_pending: number;

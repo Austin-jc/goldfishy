@@ -42,7 +42,8 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 - [x] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.
 - [x] **Regenerate tags** — `ai_retag_all` re-runs the organize pipeline over every note with live per-note progress (AI tags rewritten, manual tags untouched); "regenerate" on the TAGS header (two-step confirm) and a palette command.
-- [x] **Auto-arrange unfiled notes** — one batched LLM call plans folders for everything at root (existing folders preferred, new ones only for multi-note topics); review modal with per-note/per-group checkboxes; nothing moves until Apply. First step of the broader auto-arrange ability — filed notes are deliberately left alone for now.
+- [x] **Auto-arrange unfiled notes** — one batched LLM call plans a topical folder for everything at root (generic buckets banned in prompt + code; tags as topic hints; confident suggestions favored over none since the plan is staged); fully editable review modal — per-note destination picker, typed new folders, "no suggestion" section for manual filing; nothing moves until Apply. Filed notes are deliberately left alone for now.
+- [x] **Tunable prompts** — Settings → Prompts exposes every task's text fields + reply cap with per-task reset; overrides persist in the settings table and win over `prompts/prompts.json` defaults at run time (schemas/limits stay code-owned; bench measures defaults).
 
 ## Research-backed top picks (June 2026, from docs/improvements.md)
 

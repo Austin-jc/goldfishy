@@ -11,6 +11,7 @@ import type {
   ImportResult,
   Note,
   NoteVersionMeta,
+  PromptOverrides,
   QueueStatus,
   SearchMode,
   TagCount,
@@ -130,4 +131,10 @@ export const api = {
   applyAutoArrange: (moves: ArrangeMove[]) =>
     invoke<number>("apply_auto_arrange", { moves }),
   importNotes: (paths: string[]) => invoke<ImportResult>("import_notes", { paths }),
+
+  // prompt tuning
+  getPromptDefaults: () => invoke<Record<string, unknown>>("get_prompt_defaults"),
+  getPromptOverrides: () => invoke<PromptOverrides | null>("get_prompt_overrides"),
+  setPromptOverrides: (overrides: PromptOverrides) =>
+    invoke<void>("set_prompt_overrides", { overrides }),
 };

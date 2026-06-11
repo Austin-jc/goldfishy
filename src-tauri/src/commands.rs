@@ -1380,6 +1380,112 @@ pub async fn apply_auto_arrange(app: AppHandle, moves: Vec<ArrangeMove>) -> CmdR
     Ok(moved)
 }
 
+// ------------------------------------------------------------ prompts
+
+#[tauri::command]
+pub async fn get_prompt_defaults() -> CmdResult<serde_json::Value> {
+    Ok(crate::prompts::defaults().clone())
+}
+
+#[tauri::command]
+pub async fn get_prompt_overrides() -> CmdResult<serde_json::Value> {
+    Ok(crate::prompts::overrides())
+}
+
+/// `{placeholder}` tokens (lowercase + underscore) in a template string.
+fn template_tokens(s: &str) -> Vec<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut j = start;
+            while j < bytes.len() && (bytes[j].is_ascii_lowercase() || bytes[j] == b'_') {
+                j += 1;
+            }
+            if j > start && j < bytes.len() && bytes[j] == b'}' {
+                out.push(s[start..j].to_string());
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Overrides must stay a sparse subset of the defaults: known tasks, known
+/// fields, matching types, schemas/limits untouchable — and every
+/// `{placeholder}` from the default template still present, because deleting
+/// one silently breaks that feature at run time.
+fn validate_prompt_overrides(overrides: &serde_json::Value) -> Result<(), String> {
+    if overrides.is_null() {
+        return Ok(());
+    }
+    let Some(map) = overrides.as_object() else {
+        return Err("Prompt overrides must be a JSON object".into());
+    };
+    let defaults = crate::prompts::defaults();
+    for (task, fields) in map {
+        let dt = &defaults[task.as_str()];
+        if !dt.is_object() {
+            return Err(format!("Unknown prompt task \"{task}\""));
+        }
+        let Some(fmap) = fields.as_object() else {
+            return Err(format!("Override for \"{task}\" must be a JSON object"));
+        };
+        for (field, value) in fmap {
+            if field == "schema" || field == "schema_name" || field == "limits" {
+                return Err(format!("\"{task}.{field}\" is not tunable"));
+            }
+            let dv = &dt[field.as_str()];
+            if dv.is_null() {
+                return Err(format!("Unknown field \"{task}.{field}\""));
+            }
+            if dv.is_string() {
+                let Some(v) = value.as_str() else {
+                    return Err(format!("\"{task}.{field}\" must be text"));
+                };
+                for tok in template_tokens(dv.as_str().unwrap()) {
+                    if !v.contains(&format!("{{{tok}}}")) {
+                        return Err(format!(
+                            "\"{task}.{field}\" must keep the {{{tok}}} placeholder — it is filled in at run time"
+                        ));
+                    }
+                }
+            } else if dv.is_u64() {
+                if !value.is_u64() {
+                    return Err(format!("\"{task}.{field}\" must be a number"));
+                }
+            } else {
+                return Err(format!("\"{task}.{field}\" is not tunable"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_prompt_overrides(
+    app: AppHandle,
+    overrides: serde_json::Value,
+) -> CmdResult<()> {
+    validate_prompt_overrides(&overrides)?;
+    let state = app.state::<AppState>();
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES ('prompt_overrides', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![overrides.to_string()],
+        )
+        .map_err(estr)?;
+    }
+    crate::prompts::set_overrides(overrides);
+    Ok(())
+}
+
 // ------------------------------------------------------------ import
 
 /// Generous per-file cap — a multi-MB "note" is almost certainly not one.

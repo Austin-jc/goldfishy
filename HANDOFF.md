@@ -31,7 +31,7 @@ src-tauri/src/                # backend
   commands.rs                 # #[tauri::command] handlers
   queue.rs                    # 1s worker tick: reminders → embed queue → LLM queue
   ai.rs                       # chat(), auto-tag, bulletify, summaries, extract_actions
-  prompts.rs                  # loader for prompts/prompts.json (single prompt source)
+  prompts.rs                  # prompts/prompts.json loader + user-override layer (Settings → Prompts)
   embed.rs                    # fastembed init (single-flight) + cosine search
   diff.rs                     # significant_change gate so typo fixes skip the queues
 ```
@@ -45,6 +45,8 @@ src-tauri/src/                # backend
 **Embedder lifecycle**: model (all-MiniLM-L6-v2, ~80MB) warms up eagerly at launch via `spawn_blocking` in `lib.rs`. Phase lives in an **atomic** (`state.rs::embedder_phase`: cold/downloading/loading/ready/error) so status reads never touch the embedder mutex — that mutex is held for whole embed batches. Init is single-flight via `embedder_init` mutex. **Embeddings are versioned by model**: `embed::EMBED_MODEL_ID` is recorded in the settings table (`embed_model_id`); if it differs at startup (`db::check_embed_model_version`), all vectors are nulled + marked STALE (trashed notes included) and a sweep starts automatically — change the const whenever the fastembed model changes.
 
 **⚠ Tauri main-thread rule**: synchronous `#[tauri::command] fn`s run on the **main/UI thread**. Anything that could wait on a contended lock must be `async fn` (runs on the runtime pool). This was the cause of the original "unresponsive on start" bug. Every command that takes the db lock is async now; file-IO-heavy ones (`export_notes`, `backup_now`, `save_image*`) additionally run on `spawn_blocking`. The only sync commands left are the trivially cheap, lock-free `notify_activity` and `get_data_dir`.
+
+**Prompt overrides** (Settings → Prompts): every task's text fields + `max_tokens` are user-tunable. Overrides live in the settings table (`prompt_overrides`, sparse `{task:{field:value}}`), load at startup (`lib.rs` → `prompts::set_overrides`), and win field-by-field in `prompts::text`/`max_tokens`; schemas and truncation limits stay code-owned. `set_prompt_overrides` validates: known task/field, matching type, and every `{placeholder}` from the default still present (deleting one silently breaks the feature). **Bench measures defaults only** — remind users their edits aren't what `npm run bench` scores.
 
 **LLM layer** (`ai.rs::chat`): OpenAI-compatible `/v1/chat/completions` against `external` (Ollama/LM Studio) or `sidecar` (managed llama-server child process, health-polled, killed on exit/config change). Optional `response_format` param passes a strict `json_schema` for constrained decoding; servers that ignore it fall back to prompt + `extract_json` (which only finds `{...}` objects — always ask for an object, not a bare array). `num_ctx: 8192` is sent for Ollama; sidecar gets `-c 8192`.
 

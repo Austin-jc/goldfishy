@@ -1,11 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Download, FolderOpen, Loader2, RefreshCw, X, Zap } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  FolderOpen,
+  Loader2,
+  RefreshCw,
+  X,
+  Zap,
+} from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
 import { THEMES } from "../themes";
-import type { AppSettings, DownloadProgress } from "../types";
+import type { AppSettings, DownloadProgress, PromptOverrides } from "../types";
 
 export default function SettingsModal() {
   const settings = useStore((s) => s.settings)!;
@@ -42,11 +51,19 @@ export default function SettingsModal() {
     raw: string,
   ) => set(key, Math.min(1, Math.max(0, Number(raw) || 0)));
 
+  // Pending prompt edits from the Prompts section; null = untouched.
+  const promptOverridesRef = useRef<PromptOverrides | null>(null);
+
   const save = async (): Promise<boolean> => {
     setSaving(true);
     try {
       await api.setSettings(local);
       useStore.getState().setSettings(local);
+      if (promptOverridesRef.current !== null) {
+        // Backend validates (placeholders kept, known fields) — a clear error
+        // comes back as the toast and the modal stays open.
+        await api.setPromptOverrides(promptOverridesRef.current);
+      }
       return true;
     } catch (e) {
       useStore.getState().toast(String(e), "error");
@@ -515,6 +532,25 @@ export default function SettingsModal() {
             </div>
           </section>
 
+          {/* ---------------- Prompts ---------------- */}
+          <section>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Prompts (advanced)
+            </h3>
+            <p className="mb-2 text-[10px] leading-relaxed text-stone-600">
+              The exact instructions each AI feature sends to your model. Edit
+              freely — keep the {"{placeholders}"}, they're filled in at run
+              time (Save checks this). Edits live in your database; the
+              benchmark (<code>npm run bench</code>) always measures the
+              defaults.
+            </p>
+            <PromptsSection
+              onChange={(ov) => {
+                promptOverridesRef.current = ov;
+              }}
+            />
+          </section>
+
           {/* ---------------- Data ---------------- */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
@@ -691,6 +727,153 @@ function ToggleRow({
           }`}
         />
       </button>
+    </div>
+  );
+}
+
+/** Friendly names for prompt tasks; falls back to the raw key. */
+const PROMPT_TASK_LABELS: Record<string, string> = {
+  title: "Auto-title",
+  tag_route: "Tags & folder routing (manual Organize)",
+  organize: "Background organize (single pass)",
+  actions: "Action-item extraction",
+  arrange: "Auto-arrange unfiled notes",
+  bulletify: "Auto-bullet",
+  merge: "Merge similar notes",
+  summary: "Collection summary",
+};
+
+/**
+ * Accordion of every prompt task with its editable text fields and reply cap.
+ * Edits are kept as a sparse override object ({task: {field: value}}); a field
+ * set back to its default drops out of the overrides. Persisted on the modal's
+ * Save via `set_prompt_overrides` (which validates placeholders server-side).
+ */
+function PromptsSection({ onChange }: { onChange: (ov: PromptOverrides) => void }) {
+  const [defaults, setDefaults] = useState<Record<string, unknown> | null>(null);
+  const [overrides, setOverrides] = useState<PromptOverrides>({});
+  const [openTask, setOpenTask] = useState<string | null>(null);
+
+  useEffect(() => {
+    void Promise.all([api.getPromptDefaults(), api.getPromptOverrides()])
+      .then(([d, o]) => {
+        setDefaults(d);
+        setOverrides((o ?? {}) as PromptOverrides);
+      })
+      .catch((e) => useStore.getState().toast(String(e), "error"));
+  }, []);
+
+  if (!defaults) return null;
+
+  const tasks = Object.entries(defaults).filter(
+    (e): e is [string, Record<string, unknown>] =>
+      typeof e[1] === "object" && e[1] !== null,
+  );
+
+  const update = (next: PromptOverrides) => {
+    setOverrides(next);
+    onChange(next);
+  };
+
+  const setField = (
+    task: string,
+    field: string,
+    value: string | number,
+    def: string | number,
+  ) => {
+    const next: PromptOverrides = { ...overrides, [task]: { ...(overrides[task] ?? {}) } };
+    if (value === def) {
+      delete next[task][field];
+      if (Object.keys(next[task]).length === 0) delete next[task];
+    } else {
+      next[task][field] = value;
+    }
+    update(next);
+  };
+
+  const resetTask = (task: string) => {
+    const next = { ...overrides };
+    delete next[task];
+    update(next);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {tasks.map(([key, def]) => {
+        const fields = Object.entries(def).filter(
+          (e): e is [string, string] => typeof e[1] === "string" && e[0] !== "schema_name",
+        );
+        const modified = key in overrides;
+        const expanded = openTask === key;
+        return (
+          <div key={key} className="rounded-lg border border-stone-800">
+            <button
+              onClick={() => setOpenTask(expanded ? null : key)}
+              className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-stone-300 transition-colors hover:text-stone-100"
+            >
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {PROMPT_TASK_LABELS[key] ?? key}
+              {modified && (
+                <span className="rounded-full bg-clay-950 px-1.5 py-px text-[9px] font-medium text-clay-300">
+                  customized
+                </span>
+              )}
+              {modified && (
+                <span
+                  role="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetTask(key);
+                  }}
+                  className="ml-auto text-[10px] text-stone-500 hover:text-stone-300"
+                >
+                  reset to defaults
+                </span>
+              )}
+            </button>
+            {expanded && (
+              <div className="space-y-2 px-3 pb-3">
+                {fields.map(([field, defVal]) => {
+                  const cur = (overrides[key]?.[field] as string | undefined) ?? defVal;
+                  return (
+                    <Field key={field} label={field.replace(/_/g, " ")}>
+                      <textarea
+                        value={cur}
+                        rows={Math.min(8, Math.max(2, Math.ceil(defVal.length / 90)))}
+                        onChange={(e) => setField(key, field, e.target.value, defVal)}
+                        spellCheck={false}
+                        className={inputCls + " w-full resize-y font-mono text-[11px] leading-relaxed"}
+                      />
+                    </Field>
+                  );
+                })}
+                {typeof def.max_tokens === "number" && (
+                  <Field label="max tokens (reply length cap)">
+                    <input
+                      type="number"
+                      min={16}
+                      max={8192}
+                      value={
+                        (overrides[key]?.max_tokens as number | undefined) ??
+                        (def.max_tokens as number)
+                      }
+                      onChange={(e) =>
+                        setField(
+                          key,
+                          "max_tokens",
+                          Math.min(8192, Math.max(16, Number(e.target.value) || 16)),
+                          def.max_tokens as number,
+                        )
+                      }
+                      className={inputCls + " w-28"}
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

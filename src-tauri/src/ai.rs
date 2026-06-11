@@ -186,11 +186,12 @@ pub async fn kill_sidecar(app: &AppHandle) {
 /// don't recognise it ignore it, so callers should still validate the reply.
 pub async fn chat(
     app: &AppHandle,
-    system: &str,
-    user: &str,
+    system: impl AsRef<str>,
+    user: impl AsRef<str>,
     max_tokens: u32,
     response_format: Option<serde_json::Value>,
 ) -> Result<String> {
+    let (system, user) = (system.as_ref(), user.as_ref());
     let settings = current_settings(app);
     let (base, model, api_key) = match settings.llm_backend.as_str() {
         "external" => {
@@ -505,9 +506,9 @@ pub async fn plan_arrange(app: &AppHandle) -> Result<Vec<ArrangeGroup>> {
         }
     }
 
-    // A brand-new folder for one note is sprawl, not organization — the prompt
-    // bans it and this is the code-side backstop.
-    groups.retain(|g| !g.is_new || g.notes.len() >= 2);
+    // Single-note new folders are allowed (a confident topical suggestion
+    // beats none — the staging modal makes bad ones one click to untick);
+    // only generic names are filtered, above.
     Ok(groups)
 }
 
