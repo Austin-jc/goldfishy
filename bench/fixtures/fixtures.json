@@ -1,0 +1,146 @@
+{
+  "title": [
+    {
+      "id": "meeting-q3-onboarding",
+      "content": "met with sarah and priya this morning about the Q3 onboarding revamp. current flow loses ~40% of signups before the first project gets created. decided: cut the legacy email drip entirely, replace the 6-step wizard with a single smart default workspace, and add an interactive checklist in the sidebar. sarah owns the checklist designs, priya is scoping the workspace templates. revisit metrics two weeks after launch. open question: do we grandfather existing trial users into the new flow or not?",
+      "mustMentionAny": ["onboarding", "q3", "signup"]
+    },
+    {
+      "id": "recipe-focaccia",
+      "content": "overnight sourdough focaccia — 500g bread flour, 100g active starter, 400g water (80% hydration), 12g salt, big glug of olive oil. mix at 6pm, four sets of stretch and folds 30 min apart, then into the fridge overnight. morning: oil a 9x13 pan, dimple with wet fingers, top with rosemary and flaky salt, bake at 425F for 25-28 min until deep golden. notes from last attempt: bottom was pale — preheat a baking steel next time, and cut the salt to 10g, the olives already bring plenty.",
+      "mustMentionAny": ["focaccia", "sourdough", "bread"]
+    },
+    {
+      "id": "websocket-leak-debug",
+      "content": "spent the evening chasing the memory leak in the websocket relay. RSS climbs ~30MB/hour under steady load. heaptrack points at the per-connection broadcast buffers — we clone the payload bytes for every subscriber instead of sharing one allocation. tried switching to a shared Arc buffer and the growth flattened. still need to confirm the tokio task count isn't also creeping; tokio-console shows 4 orphaned tasks after reconnect storms. plan: land the Arc change, add a connection-close drop guard, rerun the 12h soak test.",
+      "mustMentionAny": ["memory leak", "websocket", "leak"]
+    }
+  ],
+  "tags": [
+    {
+      "id": "tags-focaccia",
+      "title": "Overnight focaccia",
+      "content": "overnight sourdough focaccia — 500g bread flour, 100g active starter, 400g water (80% hydration), 12g salt, big glug of olive oil. mix at 6pm, four sets of stretch and folds 30 min apart, then into the fridge overnight. morning: oil a 9x13 pan, dimple, top with rosemary and flaky salt, bake at 425F for 25-28 min. last attempt the bottom was pale — preheat a baking steel next time.",
+      "folders": ["Work", "Cooking", "Travel", "Health", "Projects"],
+      "existingTags": ["rust", "recipes", "travel", "meetings", "fitness", "budget", "reading", "javascript"],
+      "maxTags": 2,
+      "suggestFolders": true,
+      "acceptableTags": ["recipes", "baking", "bread", "cooking", "sourdough", "focaccia"],
+      "expectedFolder": "Cooking"
+    },
+    {
+      "id": "tags-half-marathon",
+      "title": "Half marathon training week 3",
+      "content": "week 3 of the half marathon block. tuesday intervals: 6x800m at 4:45/km, legs felt heavy but hit the splits. long run sunday is 16km easy. left knee niggle after the hill session — foam roll daily and swap thursday's tempo for the bike if it lingers. shoes are at 480km, order the next pair before they're cooked.",
+      "folders": ["Work", "Cooking", "Travel", "Health", "Projects"],
+      "existingTags": ["rust", "recipes", "travel", "meetings", "fitness", "budget", "reading", "javascript"],
+      "maxTags": 2,
+      "suggestFolders": true,
+      "acceptableTags": ["fitness", "running", "training", "half-marathon", "exercise", "health"],
+      "expectedFolder": "Health"
+    },
+    {
+      "id": "tags-kyoto",
+      "title": "Kyoto leg planning",
+      "content": "kyoto: 3 nights. stay near gion or downtown kawaramachi. day 1 fushimi inari early (before 8am!), then nishiki market for lunch. day 2 arashiyama bamboo grove + monkey park, tea in a machiya in the afternoon. day 3 day trip to nara for the deer park and todai-ji — the JR pass covers the nara line. book the ryokan with kaiseki dinner, budget ¥25k/night.",
+      "folders": ["Work", "Cooking", "Travel", "Health", "Projects"],
+      "existingTags": ["rust", "recipes", "travel", "meetings", "fitness", "budget", "reading", "javascript"],
+      "maxTags": 2,
+      "suggestFolders": true,
+      "acceptableTags": ["travel", "japan", "kyoto", "trip", "vacation"],
+      "expectedFolder": "Travel"
+    }
+  ],
+  "actions": [
+    {
+      "id": "actions-tuesday",
+      "title": "Tuesday scratchpad",
+      "content": "busy day. dana is waiting on the signed contract — email it to her tomorrow morning, it's blocking the kickoff. the dentist's office called again: book the cleaning for June 18. dry cleaning has been ready since monday, pick it up on the way home. also random thought: the kitchen tap drips, maybe the washer needs replacing (not urgent). already sent the invoice to finance, so that's done.",
+      "categories": ["work", "errands", "health"],
+      "expectedCount": [3, 4],
+      "mustInclude": ["contract", "dentist", "dry cleaning"],
+      "mustExclude": ["invoice"],
+      "expectedDues": ["2026-06-11", "2026-06-18"]
+    },
+    {
+      "id": "actions-none",
+      "title": "How HTTP caching works",
+      "content": "cache-control beats expires when both are present. max-age is relative to the response time; s-maxage only applies to shared caches. etag revalidation: the client sends if-none-match, the server replies 304 with no body when it matches. stale-while-revalidate serves the stale copy while refetching in the background. immutable tells the browser to skip revalidation entirely for the asset's lifetime.",
+      "categories": ["work", "errands", "health"],
+      "expectedCount": [0, 0],
+      "mustInclude": [],
+      "mustExclude": [],
+      "expectedDues": []
+    },
+    {
+      "id": "actions-renovation",
+      "title": "Bathroom renovation kickoff",
+      "content": "got the green light from the landlord. need to call at least three contractors for quotes this week — start with the two marta recommended. order the tile samples from the tilebar site so they arrive before the contractor visits. the permit application has to be submitted by June 26 or we lose the summer slot. budget ceiling agreed at $12k. also remeasure the alcove, the first measurement looked off.",
+      "categories": ["work", "errands", "health"],
+      "expectedCount": [3, 5],
+      "mustInclude": ["contractor", "tile", "permit"],
+      "mustExclude": [],
+      "expectedDues": ["2026-06-26"]
+    }
+  ],
+  "bulletify": [
+    {
+      "id": "bullets-offsite",
+      "content": "ok so the offsite. thinking last week of september, thursday-friday. fifteen people confirmed, maybe seventeen if the contractors join. venue shortlist is up at https://example.com/venues — lakeside lodge is the favorite but they need a deposit by end of month. food: tomas is vegetarian, ana is gluten free, otherwise easy. day one should be roadmap planning in the morning (use the big room), workshop rotations after lunch. day two morning is the hack session, afternoon hike if weather holds — need a backup indoor option. I photographed the whiteboard from the planning call: ![whiteboard](assets/offsite-whiteboard.png). budget cap from finance is 9k including travel. oh and lakeside lodge includes AV gear, the other two venues don't.",
+      "mustKeep": ["https://example.com/venues", "assets/offsite-whiteboard.png", "lakeside lodge", "gluten", "9k"]
+    },
+    {
+      "id": "bullets-ssg",
+      "content": "static site generator research for the docs revamp. astro (https://astro.build) — islands architecture, ships zero js by default, md/mdx first class, build got slow on the 2k-page test but the content collections api is lovely. eleventy (https://www.11ty.dev) — fastest builds of everything tried, 2k pages in under 4 seconds, very flexible templating but you assemble everything yourself, no built-in image pipeline. also glanced at hugo: insanely fast but the go templating made everyone sad last time. current lean: eleventy for raw speed, astro if we want interactive examples embedded in the docs. decision needed before the offsite.",
+      "mustKeep": ["https://astro.build", "https://www.11ty.dev", "eleventy", "astro", "hugo"]
+    }
+  ],
+  "merge": [
+    {
+      "id": "merge-tokyo",
+      "notes": [
+        {
+          "title": "Tokyo trip — logistics",
+          "content": "flights booked for oct 12-26. get the JR pass before flying — order at https://example.com/jr-pass at least two weeks ahead. shinkansen to kyoto on day 5. rent pocket wifi at the haneda arrival hall, about ¥900/day. stay: shinjuku for the first block. don't forget: passport renewal first, it expires in november!"
+        },
+        {
+          "title": "tokyo ideas",
+          "content": "things to do tokyo: teamlab planets (book ahead!), ghibli museum — tickets release on the 10th of the prior month, set a reminder. shinjuku stay confirmed, hotel gracery. day trip to kamakura on the enoden line. rent pocket wifi at the airport. shinkansen to kyoto around day 5. tsukiji outer market for breakfast one morning."
+        }
+      ],
+      "mustKeep": ["https://example.com/jr-pass", "ghibli", "teamlab", "kamakura", "passport", "pocket wifi"]
+    }
+  ],
+  "summary": [
+    {
+      "id": "summary-kitchen-reno",
+      "notes": [
+        {
+          "title": "Budget",
+          "content": "kitchen renovation budget locked at $18k with a 10% contingency. cabinets are the biggest line at $7k. reusing all appliances except the dishwasher."
+        },
+        {
+          "title": "Contractor quotes",
+          "content": "three quotes in: hendricks $19.5k (too high), corvo $16.8k, diy-plus-subcontractors $14k but we manage all the scheduling. leaning corvo — best reviews and a 6 week timeline."
+        },
+        {
+          "title": "Design decisions",
+          "content": "decided: shaker fronts, matte black hardware, butcher block island top, keep the window over the sink. rejected open shelving (dust magnet)."
+        },
+        {
+          "title": "Permit",
+          "content": "city permit needed because we're moving the sink plumbing. application fee $240, processing takes 3-4 weeks. submit before signing the contractor."
+        },
+        {
+          "title": "Open questions",
+          "content": "induction vs gas? induction needs a panel upgrade — get an electrician quote. also undecided on flooring: LVT vs tile."
+        },
+        {
+          "title": "Timeline",
+          "content": "target start mid-august, must be done before thanksgiving hosting. cabinets need ordering 8 weeks ahead — the early june deadline slipped, now aiming late june."
+        }
+      ],
+      "mustMentionAny": ["kitchen", "renovation", "budget", "contractor", "permit", "corvo"]
+    }
+  ]
+}

@@ -936,11 +936,15 @@ async function duplicateNote(note: Note) {
 /** A note leaf inside the explorer tree: status icons + hover preview card. */
 function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
   const active = useStore((s) => s.selectedNote?.id === note.id);
+  // Live worker target — covers bulk titling/re-tagging/merging, which run
+  // outside the status-flag pipeline.
+  const aiActive = useStore((s) => s.queue?.current_note_id === note.id);
   const [preview, setPreview] = useState<{ left: number; top: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const working = note.llm_status === "PENDING" || note.embedding_status === "PENDING";
+  const working =
+    aiActive || note.llm_status === "PENDING" || note.embedding_status === "PENDING";
   const queued =
     !working && (note.llm_status === "STALE" || note.embedding_status === "STALE");
 
@@ -993,7 +997,7 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
         <span className="truncate">{note.title || "Untitled"}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {note.pinned && <Pin size={9} className="text-stone-600" />}
-          {note.llm_status === "PENDING" ? (
+          {aiActive || note.llm_status === "PENDING" ? (
             <span title="AI working on this note…" className="flex">
               <Loader2 size={11} className="animate-spin text-sage-400" />
             </span>
