@@ -29,3 +29,12 @@ fastembed = "4"
 chrono = "0.4"
 base64 = "0.22"
 tauri-plugin-global-shortcut = "2.3.2"
+
+# Dev builds: keep our crate fast to recompile (opt-level 1) but compile
+# dependencies optimized — bundled SQLite, fastembed/tokenizers, and serde at
+# -O0 are what made dev startup feel frozen. Deps build once, then stay cached.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

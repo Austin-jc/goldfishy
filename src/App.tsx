@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useStore } from "./store";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
@@ -10,6 +11,22 @@ import CommandPalette from "./components/CommandPalette";
 import SimilarNotesModal from "./components/SimilarNotesModal";
 import Toasts from "./components/Toasts";
 import type { ActionItem, Note, QueueStatus } from "./types";
+
+// Webview zoom (⌘+/⌘−/⌘0), persisted across launches.
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+const ZOOM_STEP = 0.1;
+
+function currentZoom(): number {
+  const z = Number(localStorage.getItem("nn.zoom"));
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+
+function setZoom(factor: number) {
+  const z = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, factor)) * 10) / 10;
+  localStorage.setItem("nn.zoom", String(z));
+  void getCurrentWebview().setZoom(z);
+}
 
 export default function App() {
   const ready = useStore((s) => s.ready);
@@ -64,7 +81,13 @@ export default function App() {
     };
   }, []);
 
-  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘, settings.
+  // Restore persisted webview zoom before first paint settles.
+  useEffect(() => {
+    const z = currentZoom();
+    if (z !== 1) void getCurrentWebview().setZoom(z);
+  }, []);
+
+  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘, settings, ⌘+/−/0 zoom.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -83,6 +106,15 @@ export default function App() {
       } else if (key === "\\") {
         e.preventDefault();
         useStore.getState().toggleSidebar();
+      } else if (key === "=" || key === "+") {
+        e.preventDefault();
+        setZoom(currentZoom() + ZOOM_STEP);
+      } else if (key === "-" || key === "_") {
+        e.preventDefault();
+        setZoom(currentZoom() - ZOOM_STEP);
+      } else if (key === "0") {
+        e.preventDefault();
+        setZoom(1);
       }
     };
     window.addEventListener("keydown", handler);
