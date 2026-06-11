@@ -419,6 +419,41 @@ pub fn maybe_snapshot_note(
     Ok(())
 }
 
+/// Embeddings are only comparable within one model. If the embedder model id
+/// changed since the last launch, wipe the stored vectors (mixed-model cosine
+/// is silently garbage) and mark every note STALE — including trashed ones, so
+/// a restore can't resurrect a foreign-model vector. Returns true when the
+/// caller should start a re-index sweep.
+pub fn check_embed_model_version(conn: &Connection) -> Result<bool> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'embed_model_id'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .unwrap_or(None);
+    let resweep = match stored.as_deref() {
+        Some(v) if v == crate::embed::EMBED_MODEL_ID => false,
+        Some(_) => {
+            conn.execute(
+                "UPDATE notes SET embedding = NULL, embedding_status = 'STALE', last_embed_input = NULL",
+                [],
+            )?;
+            true
+        }
+        // First launch with version tracking: any existing vectors came from
+        // the same (previously hardcoded) model — just record the id.
+        None => false,
+    };
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES ('embed_model_id', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![crate::embed::EMBED_MODEL_ID],
+    )?;
+    Ok(resweep)
+}
+
 pub fn load_settings(conn: &Connection) -> AppSettings {
     let raw: Option<String> = conn
         .query_row("SELECT value FROM settings WHERE key = 'app'", [], |r| r.get(0))

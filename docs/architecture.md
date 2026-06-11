@@ -35,7 +35,7 @@ GoldFishy is a **local-first Tauri 2 desktop app**: a React webview frontend tal
 | Frontend | React 19, TypeScript, Vite, Tailwind v4 | zustand store; themes via CSS-variable ramps |
 | Editor | Tiptap v2 (~2.27 pinned) | content stored as **Markdown** (`tiptap-markdown`) |
 | Storage | SQLite via rusqlite (bundled), WAL | FTS5 for keyword search; embeddings as BLOBs |
-| Embeddings | fastembed / ONNX, all-MiniLM-L6-v2 | eager warm-up at launch on a blocking thread |
+| Embeddings | fastembed / ONNX, all-MiniLM-L6-v2 | eager warm-up at launch on a blocking thread; vectors versioned by `EMBED_MODEL_ID` — model swap auto-wipes + re-indexes |
 | LLM | any OpenAI-compatible `/v1/chat/completions` | `external` (Ollama/LM Studio) or managed `sidecar` (llama-server child process) |
 
 ## Data model (SQLite)

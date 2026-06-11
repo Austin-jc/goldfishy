@@ -22,6 +22,15 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let conn = db::open(app.handle())?;
+            // Embedding model changed since last launch? Old vectors were
+            // wiped — drain the re-embed sweep regardless of automation mode.
+            let resweep = db::check_embed_model_version(&conn)?;
+            if resweep {
+                eprintln!(
+                    "[embed] model changed to {} — embeddings reset, re-index sweep scheduled",
+                    embed::EMBED_MODEL_ID
+                );
+            }
             app.manage(AppState {
                 db: Arc::new(Mutex::new(conn)),
                 embedder: Arc::new(Mutex::new(None)),
@@ -32,7 +41,7 @@ pub fn run() {
                 http: reqwest::Client::new(),
                 embed_cooldown_until: Arc::new(AtomicI64::new(0)),
                 llm_cooldown_until: Arc::new(AtomicI64::new(0)),
-                sweep_active: Arc::new(AtomicBool::new(false)),
+                sweep_active: Arc::new(AtomicBool::new(resweep)),
                 current_activity: Arc::new(Mutex::new(None)),
                 last_trash_purge: Arc::new(AtomicI64::new(0)),
                 last_backup_check: Arc::new(AtomicI64::new(0)),

@@ -6,6 +6,12 @@ use tauri::{AppHandle, Manager};
 
 use crate::state::{embedder_phase, AppState};
 
+/// Identity of the embedding model behind every stored vector. Vectors are
+/// only comparable within one model — change this string whenever the
+/// `EmbeddingModel` below changes (incl. quantized variants), and startup
+/// will wipe stale vectors and schedule a re-index sweep.
+pub const EMBED_MODEL_ID: &str = "fastembed/all-MiniLM-L6-v2";
+
 /// Initialise the embedding model if it is not loaded yet. Blocking: call from
 /// a blocking context (worker thread / spawn_blocking). The phase atomic is
 /// updated (and broadcast via queue-status) so the UI can show download/load
