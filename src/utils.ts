@@ -11,6 +11,11 @@ export function relativeTime(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/** Absolute timestamp for tooltips and metadata lines: "Jun 11, 2026, 12:45 AM". */
+export function absoluteTime(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 export function stripMarkdown(s: string): string {
   return s
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
@@ -19,6 +24,18 @@ export function stripMarkdown(s: string): string {
     .replace(/[#>*_`~|-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Display title for a note: its real title, else the first words of its text
+ * as a stand-in while the AI is still titling it, else "Untitled".
+ */
+export function noteDisplayTitle(note: { title: string; content: string }): string {
+  if (note.title.trim()) return note.title;
+  const text = stripMarkdown(note.content);
+  if (!text) return "Untitled";
+  const head = text.split(" ").slice(0, 6).join(" ").slice(0, 40);
+  return head.length < text.length ? head + "…" : head;
 }
 
 function escapeHtml(s: string): string {

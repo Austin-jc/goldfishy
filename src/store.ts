@@ -3,6 +3,7 @@ import { api, setDataDir } from "./api";
 import { applyLineNumbers, applyTheme, DEFAULT_THEME } from "./themes";
 import type {
   ActionItem,
+  ActionSort,
   AppSettings,
   Folder,
   Note,
@@ -67,6 +68,8 @@ interface Store {
   toasts: Toast[];
   actionsOpen: boolean;
   actionItems: ActionItem[];
+  /** Action-panel sort order (persisted to localStorage). */
+  actionSort: ActionSort;
   /** Due reminders currently shown as in-app banners. */
   reminders: ActionItem[];
   /** Soft-deleted notes (Trash section). */
@@ -101,6 +104,7 @@ interface Store {
   setTheme: (theme: string) => void;
   setLineNumbers: (on: boolean) => void;
   setActionsOpen: (b: boolean) => void;
+  setActionSort: (sort: ActionSort) => void;
   refreshActions: () => Promise<void>;
   refreshTrash: () => Promise<void>;
   pushReminder: (item: ActionItem) => void;
@@ -132,6 +136,7 @@ export const useStore = create<Store>((set, get) => ({
   toasts: [],
   actionsOpen: false,
   actionItems: [],
+  actionSort: localStorage.getItem("nn.actionSort") === "created" ? "created" : "due",
   reminders: [],
   trash: [],
 
@@ -296,6 +301,11 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setActionsOpen: (actionsOpen) => set({ actionsOpen }),
+
+  setActionSort: (actionSort) => {
+    localStorage.setItem("nn.actionSort", actionSort);
+    set({ actionSort });
+  },
 
   refreshActions: async () => {
     try {

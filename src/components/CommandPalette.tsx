@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import { recentNoteIds, useStore } from "../store";
-import { relativeTime, snippetHtml, stripMarkdown } from "../utils";
+import { noteDisplayTitle, relativeTime, snippetHtml, stripMarkdown } from "../utils";
 import type { Note, SearchMode } from "../types";
 
 interface Command {
@@ -392,7 +392,7 @@ export default function CommandPalette() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
                       <span className="truncate text-sm text-stone-100">
-                        {n.title || "Untitled"}
+                        {noteDisplayTitle(n)}
                       </span>
                       {n.matched_by === "semantic" && (
                         <span

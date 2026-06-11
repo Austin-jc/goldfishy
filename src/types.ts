@@ -92,6 +92,9 @@ export interface BackupResult {
 
 export type ActionStatus = "proposed" | "scheduled" | "done" | "dismissed";
 
+/** Action-panel ordering: soonest reminder first, or newest created first. */
+export type ActionSort = "due" | "created";
+
 export interface ActionItem {
   id: string;
   note_id: string | null;

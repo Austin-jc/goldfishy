@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Search, Sparkles, Wand2, X } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { relativeTime, snippetHtml, stripMarkdown } from "../utils";
+import { noteDisplayTitle, relativeTime, snippetHtml, stripMarkdown } from "../utils";
 import type { Note, SearchMode } from "../types";
 
 export function SearchBar() {
@@ -256,7 +256,7 @@ export const NoteItem = memo(function NoteItem({ note }: { note: Note }) {
     >
       <div className="flex items-center gap-2">
         <span className="truncate text-[13px] font-medium text-stone-100">
-          {note.title || "Untitled"}
+          {noteDisplayTitle(note)}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {note.embedding_status === "PENDING" && (

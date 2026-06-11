@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Combine, FileText, Loader2, X } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { relativeTime, stripMarkdown } from "../utils";
+import { noteDisplayTitle, relativeTime, stripMarkdown } from "../utils";
 import type { Note } from "../types";
 
 /**
@@ -37,7 +37,7 @@ export default function SimilarNotesModal() {
       void st.refreshTags();
       void st.refreshTrash();
       st.toast(
-        `Merged ${group.length} notes into “${merged.title || "Untitled"}”`,
+        `Merged ${group.length} notes into “${noteDisplayTitle(merged)}”`,
         "success",
         { label: "Open", run: () => void useStore.getState().selectNote(merged.id) },
       );
@@ -96,7 +96,7 @@ export default function SimilarNotesModal() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
                       <span className="truncate text-xs text-stone-200">
-                        {n.title || "Untitled"}
+                        {noteDisplayTitle(n)}
                       </span>
                       <span className="ml-auto shrink-0 text-[9px] text-stone-600">
                         {relativeTime(n.updated_at)}

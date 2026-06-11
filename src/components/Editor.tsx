@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   BubbleMenu,
   EditorContent,
@@ -49,7 +49,7 @@ import { useStore } from "../store";
 import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { findTermRanges, TermHighlight } from "../editor/highlight";
 import { SlashCommands } from "../editor/slash";
-import { isImagePath, relativeTime } from "../utils";
+import { absoluteTime, isImagePath, noteDisplayTitle, relativeTime } from "../utils";
 import ContextMenu from "./ContextMenu";
 import { Copy } from "lucide-react";
 import type { Note, NoteVersionMeta } from "../types";
@@ -67,6 +67,31 @@ function bufToBase64(buf: ArrayBuffer): string {
 }
 
 const PASTE_EXT: Record<string, string> = { jpeg: "jpg", "svg+xml": "svg" };
+
+/**
+ * Live width of an element, so the header can shed labels before it overflows
+ * under the action panel. A CSS container query can't do this here: inline-size
+ * containment would re-anchor the `fixed inset-0` click-away backdrops of the
+ * folder/history popovers to the header instead of the viewport.
+ */
+function useElementWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(Number.MAX_SAFE_INTEGER);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+/** Header width below which the AI buttons go icon-only / the timestamp hides. */
+const HEADER_LABELS_MIN = 700;
+const HEADER_EDITED_MIN = 520;
 
 export default function Editor() {
   const noteId = useStore((s) => s.selectedNote?.id);
@@ -374,8 +399,17 @@ function EditorInner({ noteId }: { noteId: string }) {
     }
   };
 
+  const [headerRef, headerWidth] = useElementWidth<HTMLElement>();
+  const showLabels = headerWidth >= HEADER_LABELS_MIN;
+  const showEdited = headerWidth >= HEADER_EDITED_MIN;
+
   const ghostBtn =
-    "flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50";
+    "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200 disabled:opacity-50";
+  // AI actions get real button affordances (resting tint, hover fill, pressed
+  // state) in the sage "AI" accent, inside a ringed cluster — see header below.
+  const aiBtn =
+    "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md py-1 text-[11px] text-stone-300 transition-colors hover:bg-sage-900/40 hover:text-sage-200 active:bg-sage-900/60 disabled:opacity-50 " +
+    (showLabels ? "px-2" : "px-1.5");
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col">
@@ -383,54 +417,62 @@ function EditorInner({ noteId }: { noteId: string }) {
         <FindBar editor={editor} onClose={() => setFindOpen(false)} />
       )}
       {/* header — borderless, recedes behind the canvas */}
-      <header className="flex items-center gap-2 px-5 pb-1 pt-3">
+      <header ref={headerRef} className="flex items-center gap-2 px-5 pb-1 pt-3">
         <FolderPicker noteId={noteId} folderId={note.folder_id} />
 
-        <span className="text-[10px] text-stone-600">edited {relativeTime(note.updated_at)}</span>
+        {showEdited && (
+          <span
+            className="whitespace-nowrap text-[10px] text-stone-600"
+            title={`Created ${absoluteTime(note.created_at)} · edited ${absoluteTime(note.updated_at)}`}
+          >
+            edited {relativeTime(note.updated_at)}
+          </span>
+        )}
 
-        <span className="ml-auto flex items-center gap-0.5">
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {llmReady && (
-            <>
+            <span className="mr-1 flex items-center rounded-lg p-0.5 ring-1 ring-stone-800">
+              <Sparkles size={11} className="mx-1 shrink-0 text-sage-400" />
               <button
                 onClick={() => void runBulletify()}
                 disabled={aiWorking !== ""}
                 title="Auto-bullet: restructure into concise bullet points"
-                className={ghostBtn + " hover:text-clay-300"}
+                className={aiBtn}
               >
                 {aiWorking === "bullets" ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : (
                   <List size={12} />
                 )}
-                Auto-bullet
+                {showLabels && "Auto-bullet"}
               </button>
               <button
                 onClick={() => void runOrganize()}
                 disabled={aiWorking !== ""}
-                title="Suggest tags and a destination folder"
-                className={ghostBtn + " hover:text-clay-300"}
+                title="Organize: suggest tags and a destination folder"
+                className={aiBtn}
               >
                 {aiWorking === "organize" ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : (
                   <Tags size={12} />
                 )}
-                Organize
+                {showLabels && "Organize"}
               </button>
               <button
                 onClick={() => void runActions()}
                 disabled={aiWorking !== ""}
                 title="Extract action items & follow-ups from this note"
-                className={ghostBtn + " hover:text-clay-300"}
+                className={aiBtn}
               >
                 {aiWorking === "actions" ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : (
                   <ListChecks size={12} />
                 )}
-                Actions
+                {showLabels && "Extract actions"}
               </button>
-            </>
+            </span>
           )}
           <HistoryPopover
             noteId={noteId}
@@ -705,6 +747,7 @@ function HistoryPopover({
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<NoteVersionMeta[]>([]);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const createdAt = useStore((s) => s.selectedNote?.created_at);
 
   useEffect(() => {
     if (!open) return;
@@ -774,6 +817,11 @@ function HistoryPopover({
             {versions.length === 0 && (
               <p className="px-2.5 py-3 text-center text-[11px] text-stone-600">
                 No checkpoints yet — they accumulate as you edit.
+              </p>
+            )}
+            {createdAt != null && (
+              <p className="mt-1 border-t border-stone-800/70 px-2.5 pb-1.5 pt-2 text-[10px] text-stone-600">
+                Note created {absoluteTime(createdAt)}
               </p>
             )}
           </div>
@@ -888,7 +936,7 @@ function RelatedNotes({ noteId }: { noteId: string }) {
           >
             <FileText size={12} className="shrink-0 text-stone-600" />
             <span className="truncate text-xs text-stone-300">
-              {n.title || "Untitled"}
+              {noteDisplayTitle(n)}
             </span>
             <span className="ml-auto flex shrink-0 items-center gap-2">
               {typeof n.score === "number" && (
@@ -926,13 +974,17 @@ function FolderPicker({ noteId, folderId }: { noteId: string; folderId: string |
   };
 
   return (
-    <div className="relative">
+    // min-w-0 lets the picker shrink (and truncate) before the header overflows.
+    <div className="relative min-w-0 max-w-52">
       <button
         onClick={() => setOpen(!open)}
         title="Where this note is filed — click to move it"
-        className="flex max-w-52 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200"
+        className="flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-stone-400 transition-colors hover:bg-stone-900 hover:text-stone-200"
       >
-        <FolderIcon size={12} className={current ? "text-clay-400" : "text-stone-500"} />
+        <FolderIcon
+          size={12}
+          className={"shrink-0 " + (current ? "text-clay-400" : "text-stone-500")}
+        />
         <span className="truncate">{current ? current.name : "No folder"}</span>
         <ChevronDown size={11} className="shrink-0 text-stone-600" />
       </button>

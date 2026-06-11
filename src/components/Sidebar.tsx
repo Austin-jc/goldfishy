@@ -30,7 +30,13 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { recencyBucket, RECENCY_BUCKETS, relativeTime, stripMarkdown } from "../utils";
+import {
+  noteDisplayTitle,
+  recencyBucket,
+  RECENCY_BUCKETS,
+  relativeTime,
+  stripMarkdown,
+} from "../utils";
 import ContextMenu from "./ContextMenu";
 import GoldfishLogo from "./GoldfishLogo";
 import { NoteItem, SearchBar, SummaryBar } from "./NoteList";
@@ -746,8 +752,8 @@ function TrashRow({ note, onRestore }: { note: Note; onRestore: () => void }) {
   return (
     <div className="group flex items-center gap-1.5 rounded-lg py-1 pl-[21px] pr-2 text-[12.5px] text-stone-500 transition-colors hover:bg-stone-800/40">
       <FileText size={12} className="shrink-0 text-stone-700" />
-      <span className="truncate" title={note.title || "Untitled"}>
-        {note.title || "Untitled"}
+      <span className="truncate" title={noteDisplayTitle(note)}>
+        {noteDisplayTitle(note)}
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1">
         <span className="text-[9px] text-stone-600 group-hover:hidden">
@@ -906,7 +912,7 @@ function QueueFooter() {
                   className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-stone-800/70"
                 >
                   <span className="min-w-0 flex-1 truncate text-xs text-stone-200">
-                    {n.title || "Untitled"}
+                    {noteDisplayTitle(n)}
                   </span>
                   <span className="flex shrink-0 items-center gap-1">
                     {n.embedding_status !== "CLEAN" && (
@@ -1076,7 +1082,7 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
         style={{ paddingLeft: 21 + depth * 14 }}
       >
         <FileText size={12} className="shrink-0 text-stone-600" />
-        <span className="truncate">{note.title || "Untitled"}</span>
+        <span className="truncate">{noteDisplayTitle(note)}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {note.pinned && <Pin size={9} className="text-stone-600" />}
           {aiActive || note.llm_status === "PENDING" ? (
@@ -1100,7 +1106,7 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
           style={{ ...preview, width: PREVIEW_W }}
         >
           <p className="truncate text-xs font-semibold text-stone-100">
-            {note.title || "Untitled"}
+            {noteDisplayTitle(note)}
           </p>
           <p className="mt-0.5 text-[9px] text-stone-600">
             edited {relativeTime(note.updated_at)}

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  ArrowUpDown,
   CalendarClock,
   Check,
   ChevronDown,
@@ -41,6 +42,8 @@ export function dueLabel(ms: number): { text: string; overdue: boolean } {
 export default function ActionPanel() {
   const items = useStore((s) => s.actionItems);
   const setActionsOpen = useStore((s) => s.setActionsOpen);
+  const actionSort = useStore((s) => s.actionSort);
+  const setActionSort = useStore((s) => s.setActionSort);
   const refreshActions = useStore((s) => s.refreshActions);
   const selectedNoteId = useStore((s) => s.selectedNote?.id);
   const settings = useStore((s) => s.settings);
@@ -53,10 +56,17 @@ export default function ActionPanel() {
     () => [...new Set(items.map((i) => i.category))].sort(),
     [items],
   );
+  // "due": soonest reminder first, undated items last; "created": newest first.
+  const cmp =
+    actionSort === "due"
+      ? (a: ActionItem, b: ActionItem) =>
+          (a.due_at ?? Number.MAX_SAFE_INTEGER) - (b.due_at ?? Number.MAX_SAFE_INTEGER) ||
+          b.created_at - a.created_at
+      : (a: ActionItem, b: ActionItem) => b.created_at - a.created_at;
   const visible = filter ? items.filter((i) => i.category === filter) : items;
-  const proposed = visible.filter((i) => i.status === "proposed");
-  const scheduled = visible.filter((i) => i.status === "scheduled");
-  const done = visible.filter((i) => i.status === "done");
+  const proposed = visible.filter((i) => i.status === "proposed").sort(cmp);
+  const scheduled = visible.filter((i) => i.status === "scheduled").sort(cmp);
+  const done = visible.filter((i) => i.status === "done").sort(cmp);
 
   const addItem = async () => {
     const text = newText.trim();
@@ -151,6 +161,33 @@ export default function ActionPanel() {
         </div>
       )}
 
+      {/* sort order — its own labeled row, segmented so it reads as one
+          control rather than two more category pills */}
+      {items.length > 1 && (
+        <div className="flex items-center justify-end gap-1.5 px-3 pb-2">
+          <span className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-stone-600">
+            <ArrowUpDown size={9} />
+            Sort
+          </span>
+          <span className="flex overflow-hidden rounded-md ring-1 ring-stone-800">
+            <SortSegment
+              active={actionSort === "due"}
+              onClick={() => setActionSort("due")}
+              title="By reminder time — soonest first"
+            >
+              soonest
+            </SortSegment>
+            <SortSegment
+              active={actionSort === "created"}
+              onClick={() => setActionSort("created")}
+              title="By created date — newest first"
+            >
+              newest
+            </SortSegment>
+          </span>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto pb-4">
         {proposed.length > 0 && (
           <Section title={`Proposed · ${proposed.length}`}>
@@ -221,6 +258,32 @@ function FilterChip({
         active
           ? "bg-clay-600/25 text-clay-300"
           : "bg-stone-800/70 text-stone-400 hover:text-stone-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SortSegment({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`cursor-pointer px-2 py-0.5 text-[10px] transition-colors ${
+        active
+          ? "bg-stone-800 text-stone-200"
+          : "text-stone-500 hover:bg-stone-800/40 hover:text-stone-300"
       }`}
     >
       {children}
