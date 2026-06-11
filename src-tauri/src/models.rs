@@ -116,6 +116,13 @@ pub struct AppSettings {
     pub backup_dir: String,
     /// Days between automatic backups.
     pub backup_interval_days: u32,
+    /// Cosine floor for semantic search hits (also the smart mode's semantic
+    /// leg). Lower = broader, noisier matches.
+    pub semantic_search_threshold: f32,
+    /// Cosine floor for the editor's Related-notes panel.
+    pub related_notes_threshold: f32,
+    /// Cosine floor for "Tidy up" merge candidates.
+    pub similar_merge_threshold: f32,
 }
 
 impl Default for AppSettings {
@@ -140,6 +147,9 @@ impl Default for AppSettings {
             notify_system: true,
             backup_dir: "".into(),
             backup_interval_days: 7,
+            semantic_search_threshold: 0.25,
+            related_notes_threshold: 0.35,
+            similar_merge_threshold: 0.80,
         }
     }
 }

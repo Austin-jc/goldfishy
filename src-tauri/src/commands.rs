@@ -284,11 +284,11 @@ fn keyword_ranked(
     Ok(rows)
 }
 
-const SEMANTIC_THRESHOLD: f32 = 0.25;
 const SEMANTIC_TOP: usize = 30;
 
 /// Cosine-ranked semantic hits, best first. Embeds the query on the blocking
-/// pool, then scans all stored vectors in-process.
+/// pool, then scans all stored vectors in-process. The similarity floor comes
+/// from settings (`semantic_search_threshold`, default 0.25).
 async fn semantic_ranked(app: &AppHandle, q: &str) -> CmdResult<Vec<(String, f32)>> {
     let vectors = embed::embed_texts(app.clone(), vec![q.to_string()])
         .await
@@ -299,8 +299,9 @@ async fn semantic_ranked(app: &AppHandle, q: &str) -> CmdResult<Vec<(String, f32
         .ok_or_else(|| "embedding failed".to_string())?;
 
     let state = app.state::<AppState>();
-    let mut scored: Vec<(String, f32)> = {
+    let (threshold, mut scored): (f32, Vec<(String, f32)>) = {
         let db = state.db.lock().unwrap();
+        let threshold = db::load_settings(&db).semantic_search_threshold.clamp(0.0, 1.0);
         let mut stmt = db
             .prepare(
                 "SELECT id, embedding FROM notes
@@ -312,15 +313,17 @@ async fn semantic_ranked(app: &AppHandle, q: &str) -> CmdResult<Vec<(String, f32
                 Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
             })
             .map_err(estr)?;
-        rows.filter_map(|r| r.ok())
+        let scored = rows
+            .filter_map(|r| r.ok())
             .map(|(id, blob)| {
                 let score = embed::cosine(&qv, &embed::from_blob(&blob));
                 (id, score)
             })
-            .collect()
+            .collect();
+        (threshold, scored)
     };
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    scored.retain(|(_, s)| *s > SEMANTIC_THRESHOLD);
+    scored.retain(|(_, s)| *s > threshold);
     scored.truncate(SEMANTIC_TOP);
     Ok(scored)
 }
@@ -437,8 +440,9 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
 #[tauri::command]
 pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Note>> {
     let state = app.state::<AppState>();
-    let scored: Vec<(String, f32)> = {
+    let (threshold, scored): (f32, Vec<(String, f32)>) = {
         let db = state.db.lock().unwrap();
+        let threshold = db::load_settings(&db).related_notes_threshold.clamp(0.0, 1.0);
         let target: Option<Vec<u8>> = db
             .query_row(
                 "SELECT embedding FROM notes WHERE id = ?1",
@@ -461,16 +465,18 @@ pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Not
                 Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
             })
             .map_err(estr)?;
-        rows.filter_map(|r| r.ok())
+        let scored = rows
+            .filter_map(|r| r.ok())
             .map(|(id, blob)| {
                 let score = embed::cosine(&qv, &embed::from_blob(&blob));
                 (id, score)
             })
-            .collect()
+            .collect();
+        (threshold, scored)
     };
     let mut scored = scored;
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    scored.retain(|(_, s)| *s > 0.35);
+    scored.retain(|(_, s)| *s > threshold);
     scored.truncate(4);
 
     let ids: Vec<String> = scored.iter().map(|(id, _)| id.clone()).collect();
@@ -493,17 +499,18 @@ fn uf_find(parent: &mut [usize], mut i: usize) -> usize {
     i
 }
 
-/// Clusters of highly similar notes (embedding cosine ≥ 0.80), candidates
-/// for merging. Groups are oldest-first; capped to keep the review digestible.
+/// Clusters of highly similar notes (embedding cosine above the tunable
+/// `similar_merge_threshold`, default 0.80), candidates for merging. Groups
+/// are oldest-first; capped to keep the review digestible.
 #[tauri::command]
 pub async fn find_similar_notes(app: AppHandle) -> CmdResult<Vec<Vec<Note>>> {
-    const THRESHOLD: f32 = 0.80;
     const MAX_GROUPS: usize = 10;
     const MAX_GROUP_SIZE: usize = 6;
 
     let state = app.state::<AppState>();
-    let (ids, vecs): (Vec<String>, Vec<Vec<f32>>) = {
+    let (threshold, ids, vecs): (f32, Vec<String>, Vec<Vec<f32>>) = {
         let db = state.db.lock().unwrap();
+        let threshold = db::load_settings(&db).similar_merge_threshold.clamp(0.0, 1.0);
         let mut stmt = db
             .prepare(
                 "SELECT id, embedding FROM notes
@@ -521,14 +528,14 @@ pub async fn find_similar_notes(app: AppHandle) -> CmdResult<Vec<Vec<Note>>> {
             ids.push(row.0);
             vecs.push(embed::from_blob(&row.1));
         }
-        (ids, vecs)
+        (threshold, ids, vecs)
     };
 
     let n = ids.len();
     let mut parent: Vec<usize> = (0..n).collect();
     for i in 0..n {
         for j in (i + 1)..n {
-            if embed::cosine(&vecs[i], &vecs[j]) >= THRESHOLD {
+            if embed::cosine(&vecs[i], &vecs[j]) >= threshold {
                 let (ri, rj) = (uf_find(&mut parent, i), uf_find(&mut parent, j));
                 if ri != rj {
                     parent[rj] = ri;

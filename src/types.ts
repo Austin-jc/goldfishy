@@ -77,6 +77,12 @@ export interface AppSettings {
   /** Folder for periodic markdown backups; empty = backups off. */
   backup_dir: string;
   backup_interval_days: number;
+  /** Cosine floor for semantic search hits (incl. smart mode's semantic leg). */
+  semantic_search_threshold: number;
+  /** Cosine floor for the editor's Related-notes panel. */
+  related_notes_threshold: number;
+  /** Cosine floor for "Tidy up" merge candidates. */
+  similar_merge_threshold: number;
 }
 
 export interface BackupResult {

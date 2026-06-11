@@ -37,6 +37,11 @@ export default function SettingsModal() {
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setLocal((prev) => ({ ...prev, [key]: value }));
 
+  const setThreshold = (
+    key: "semantic_search_threshold" | "related_notes_threshold" | "similar_merge_threshold",
+    raw: string,
+  ) => set(key, Math.min(1, Math.max(0, Number(raw) || 0)));
+
   const save = async (): Promise<boolean> => {
     setSaving(true);
     try {
@@ -428,6 +433,57 @@ export default function SettingsModal() {
                   )}
                   {queue?.sweep_active ? "Sweeping…" : "Re-index now"}
                 </button>
+              </div>
+            </div>
+          </section>
+
+          {/* ---------------- Search & similarity ---------------- */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Search &amp; Similarity
+            </h3>
+            <div className="space-y-3 rounded-lg border border-stone-800 p-3">
+              <p className="text-[10px] text-stone-500">
+                Cosine-similarity floors (0–1). Lower lets broader, looser matches
+                through; higher keeps only near-misses. Defaults in parentheses.
+              </p>
+              <div className="flex gap-4">
+                <Field label="Semantic search (0.25)" className="flex-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={local.semantic_search_threshold}
+                    onChange={(e) => setThreshold("semantic_search_threshold", e.target.value)}
+                    className={inputCls}
+                    title="Floor for semantic results — also the smart mode's by-meaning matches"
+                  />
+                </Field>
+                <Field label="Related notes (0.35)" className="flex-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={local.related_notes_threshold}
+                    onChange={(e) => setThreshold("related_notes_threshold", e.target.value)}
+                    className={inputCls}
+                    title="Floor for the Related-notes panel under the editor"
+                  />
+                </Field>
+                <Field label="Tidy-up merge (0.80)" className="flex-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={local.similar_merge_threshold}
+                    onChange={(e) => setThreshold("similar_merge_threshold", e.target.value)}
+                    className={inputCls}
+                    title="How similar two notes must be before Tidy up proposes merging them"
+                  />
+                </Field>
               </div>
             </div>
           </section>

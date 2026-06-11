@@ -26,7 +26,7 @@ The complete list of what GoldFishy does today, grouped by area. User-facing ins
 ## Search & retrieval
 
 - **Keyword search** — instant FTS5 with prefix matching and highlighted snippets; matches highlighted inside the opened note too.
-- **Smart search (default)** — keyword (FTS5/bm25) and semantic (embeddings) run in parallel, rankings fused with Reciprocal Rank Fusion; results that matched by meaning alone carry a ✨ "meaning" badge. Keyword-only and semantic-only stay available as explicit modes (toggle in the search bar, Tab in the palette).
+- **Smart search (default)** — keyword (FTS5/bm25) and semantic (embeddings) run in parallel, rankings fused with Reciprocal Rank Fusion; results that matched by meaning alone carry a ✨ "meaning" badge. Keyword-only and semantic-only stay available as explicit modes (toggle in the search bar, Tab in the palette). Similarity floors for search, related notes, and Tidy-up merging are tunable in Settings → Search & Similarity.
 - **Search-or-create** — zero-results searches offer to create a note titled with the query (sidebar and palette); results group under Today / Yesterday / Previous-days headers.
 - **Command palette** — ⌘K/⌘P: fuzzy note search (keyword/semantic), `>`-prefixed commands, VS Code style; empty query shows recently opened notes, and any query grows a "Create note" row (↵ on zero results, ⇧↵ anytime).
 - **Related notes** — most-similar notes at the bottom of the editor (cosine over embeddings).

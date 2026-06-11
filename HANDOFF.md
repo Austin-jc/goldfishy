@@ -54,7 +54,7 @@ src-tauri/src/                # backend
 
 **Events** (backend → frontend, listeners in `App.tsx`): `note-updated`, `queue-status`, `worker-error`, `sweep-done`, `action-items-changed`, `action-due`, `model-download-progress`.
 
-**Search**: three modes, default **smart** = run keyword and semantic in parallel and fuse rankings with Reciprocal Rank Fusion (`score = Σ 1/(60 + rank)`, `commands.rs::search_notes`); per-result `matched_by` ("keyword"/"semantic"/"both") drives a ✨ "meaning" badge on semantic-only hits. The smart semantic leg is skipped unless `embedder_phase == READY`, so search never blocks on a model download (degrades to keyword). Keyword = FTS5 (`notes_fts`, triggers keep it synced, bm25 + snippet); semantic = in-process cosine scan over embedding BLOBs, threshold 0.25, top 30. Multi-tag filtering is **AND** (`HAVING COUNT(DISTINCT tag) = n` in `db.rs::list_notes`).
+**Search**: three modes, default **smart** = run keyword and semantic in parallel and fuse rankings with Reciprocal Rank Fusion (`score = Σ 1/(60 + rank)`, `commands.rs::search_notes`); per-result `matched_by` ("keyword"/"semantic"/"both") drives a ✨ "meaning" badge on semantic-only hits. The smart semantic leg is skipped unless `embedder_phase == READY`, so search never blocks on a model download (degrades to keyword). Keyword = FTS5 (`notes_fts`, triggers keep it synced, bm25 + snippet); semantic = in-process cosine scan over embedding BLOBs, threshold from settings (default 0.25), top 30. Multi-tag filtering is **AND** (`HAVING COUNT(DISTINCT tag) = n` in `db.rs::list_notes`).
 
 ## Theming — the one rule
 
@@ -75,7 +75,7 @@ UI conventions: no borders between regions — tone shifts + whitespace; popover
 
 ## Settings
 
-`AppSettings` (models.rs ↔ types.ts) is one JSON blob in the `settings` table, `#[serde(default)]` so adding fields is backward-compatible — add to struct + `Default` impl + types.ts + SettingsModal. Backend-owned: automation, debounces, LLM backend config, `auto_tag_max`, `extract_actions`, `notify_in_app`, `notify_system`. Frontend-only (localStorage): theme, sidebar state. Theme picker applies instantly; everything else needs Save.
+`AppSettings` (models.rs ↔ types.ts) is one JSON blob in the `settings` table, `#[serde(default)]` so adding fields is backward-compatible — add to struct + `Default` impl + types.ts + SettingsModal. Backend-owned: automation, debounces, LLM backend config, `auto_tag_max`, `extract_actions`, `notify_in_app`, `notify_system`, similarity thresholds (`semantic_search_threshold` 0.25 — search + smart leg, `related_notes_threshold` 0.35, `similar_merge_threshold` 0.80 — Tidy up). Frontend-only (localStorage): theme, sidebar state. Theme picker applies instantly; everything else needs Save.
 
 ## Data & invariants
 
@@ -91,7 +91,7 @@ DB: `~/Library/Application Support/com.nexusnote.app/nexusnote.db` (WAL). Migrat
 
 **Per-feature AI toggles** in `AppSettings`: `auto_tag_max` (0=off), `auto_title`, `suggest_folders`, `extract_actions` — gate the worker pipeline and manual Organize; explicit actions (bulk auto-title, merge) stay available whenever an LLM backend is configured.
 
-Editor extras: TaskList/TaskItem (GFM `- [ ]`), `SlashCommands` ("/" insert menu, plain-DOM dropdown via @tiptap/suggestion), `TermHighlight` decorations (search click-through + ⌘F find bar), clipboard image paste (`save_image_bytes`, base64). Sidebar: pinned section, drag-drop note/folder moves (`move_folder` refuses cycles), right-click ContextMenu, Trash section, "Tidy up similar notes" (`find_similar_notes` union-find ≥0.80 cosine + `merge_notes`).
+Editor extras: TaskList/TaskItem (GFM `- [ ]`), `SlashCommands` ("/" insert menu, plain-DOM dropdown via @tiptap/suggestion), `TermHighlight` decorations (search click-through + ⌘F find bar), clipboard image paste (`save_image_bytes`, base64). Sidebar: pinned section, drag-drop note/folder moves (`move_folder` refuses cycles), right-click ContextMenu, Trash section, "Tidy up similar notes" (`find_similar_notes` union-find at the tunable `similar_merge_threshold` (default 0.80) + `merge_notes`).
 
 **Do not rename** the bundle `identifier` (`com.nexusnote.app`) or the db filename — either would orphan users' data. Rebrand was deliberately limited to `productName`, window title, and UI text.
 

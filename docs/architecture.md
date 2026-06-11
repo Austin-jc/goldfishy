@@ -76,7 +76,7 @@ The worker publishes a live `current_activity` label + note id into `QueueStatus
 
 - **Smart (default)**: keyword and semantic run in parallel, rankings fused with Reciprocal Rank Fusion (k=60); semantic-only hits are badged "meaning" via `matched_by`. Skips the semantic leg (keyword-only) until the embedder is ready.
 - **Keyword**: FTS5 `notes_fts`, prefix matching, bm25 + highlighted snippets.
-- **Semantic**: embed the query, in-process cosine scan over all embedding BLOBs (threshold 0.25, top 30). Fine to ~thousands of notes; `sqlite-vec` is the contained upgrade path inside `embed.rs`.
+- **Semantic**: embed the query, in-process cosine scan over all embedding BLOBs (threshold tunable in Settings, default 0.25; top 30). Fine to ~thousands of notes; `sqlite-vec` is the contained upgrade path inside `embed.rs`.
 - Multi-tag filtering is AND semantics, applied server-side in `list_notes`.
 
 ## Events (backend → frontend)
