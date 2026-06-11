@@ -40,3 +40,16 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 - [x] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.
 - [x] **Regenerate tags** — `ai_retag_all` re-runs the organize pipeline over every note with live per-note progress (AI tags rewritten, manual tags untouched); "regenerate" on the TAGS header (two-step confirm) and a palette command.
+
+## Research-backed top picks (June 2026, from docs/improvements.md)
+
+- [x] **Prompt single source + versioning** (AI-3) — `prompts/prompts.json` shared by `ai.rs` and the bench; `version` stamped into bench results.
+- [x] **Keep/discard preview for AI rewrites** (AI-1) — Auto-bullet previews before writing; Keep still snapshots first.
+- [x] **No Markdown serialization per keystroke** (PERF-1) — `getMarkdown()` runs once per debounced save.
+- [x] **All db-locking commands async** (PERF-2) — file-IO commands additionally on the blocking pool.
+- [x] **`list_notes` excerpts + non-blocking first paint** (PERF-3/16) — 240-char server-side previews; tree fills in after the shell paints.
+- [x] **`PRAGMA synchronous = NORMAL`** (PERF-7).
+- [x] **Search-or-create + palette recents** (NOTE-1/2, UX-1–3) — MRU empty state, Create-from-query everywhere, recency group headers.
+- [x] **Single-call worker pipeline** (AI-2/PERF-11) — `organize_note` returns `{title, tags, folder, items}` in one structured call; benchable as `organize`.
+- [x] **Embeddings versioned by model id** (AI-7) — model swap auto-wipes vectors and re-indexes.
+- [x] **Tag-refresh debounce + memoized tree rows** (PERF-4/6) — kills sidebar churn during worker sweeps.
