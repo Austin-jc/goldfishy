@@ -13,7 +13,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 7. ✅ **Search-or-create + recents in the palette** (NOTE-1, NOTE-2, UX-1–3) — the single highest-leverage notepad interaction pattern. — **done:** MRU recents on empty palette, Create-from-query row (↵ on zero results, ⇧↵ anytime), zero-results Create button in SearchBar, recency group headers in results.
 8. ✅ **Collapse the per-note LLM pipeline into one structured call** (AI-2, PERF-11) — roughly halves per-note wall time and tokens. — **done:** `ai::organize_note` (one `{title, tags, folder, items}` call) drives Queue-2; benchable as the `organize` feature.
 9. ✅ **Version embeddings by model id** (AI-7) — prerequisite for any model swap (quantized MiniLM / Model2Vec, PERF-12). — **done:** `embed::EMBED_MODEL_ID` recorded in settings; mismatch at startup wipes vectors and auto-starts a sweep.
-10. **Coalesce the `note-updated` → `refreshTags` storm + memoize tree rows** (PERF-4, PERF-6) — kills background churn during sweeps.
+10. ✅ **Coalesce the `note-updated` → `refreshTags` storm + memoize tree rows** (PERF-4, PERF-6) — kills background churn during sweeps. — **done:** 400 ms trailing debounce on tag refresh; `TreeNoteRow`/`FolderNode`/`NoteItem` memoized; hover snippets computed only while showing; sidebar's queue subscription narrowed to a busy boolean.
 
 ---
 
@@ -91,9 +91,9 @@ Verified against the code at the cited locations. Ordered by impact-for-effort.
 | ✅ PERF-1 | Move `getMarkdown()` out of `onUpdate` (per keystroke) into the debounced `saveNow()` | `Editor.tsx` ~178 vs ~121 | **High** — typing latency, grows with note size | S |
 | ✅ PERF-2 | Async-ify remaining hot sync commands: `update_note`, `list_notes`, `create_note`, `reindex_all`, `save_image_bytes`, `export_notes`, `backup_now` (sync `fn`s run on the main thread; image paste base64-decodes on it today) | `commands.rs` 61, 234, 979, 1144, 1192, 1231 | **High** — removes UI stalls during worker write bursts | S |
 | ✅ PERF-3 | `list_notes` returns ~240-char server-side excerpts, not full content (UI only uses 120–220 chars; editor loads via `get_note`); fix `duplicateNote` consumer | `db.rs` 137/205, `store.ts` 127, `Sidebar.tsx` 1017 | **High** at scale — startup, refresh, memory | M |
-| PERF-4 | `React.memo` tree rows; compute hover snippets lazily (`stripMarkdown` runs per row per render today); narrow Sidebar's `queue` subscription | `Sidebar.tsx` 90/1017, `NoteList.tsx` 212 | Med-high — sidebar CPU while worker runs | S |
+| ✅ PERF-4 | `React.memo` tree rows; compute hover snippets lazily (`stripMarkdown` runs per row per render today); narrow Sidebar's `queue` subscription | `Sidebar.tsx` 90/1017, `NoteList.tsx` 212 | Med-high — sidebar CPU while worker runs | S |
 | PERF-5 | `shouldRerenderOnTransaction: false` + `useEditorState` for SelectionMenu ([Tiptap perf guide](https://tiptap.dev/docs/guides/performance)) | `Editor.tsx` 138, 858 | Med-high — typing latency on large docs | S–M |
-| PERF-6 | Debounce the `note-updated` → `refreshTags()` storm (embed batch = 8 events/tick; sweep = hundreds) | `App.tsx` 42, `queue.rs` 69/271 | Medium — background churn | S |
+| ✅ PERF-6 | Debounce the `note-updated` → `refreshTags()` storm (embed batch = 8 events/tick; sweep = hundreds) | `App.tsx` 42, `queue.rs` 69/271 | Medium — background churn | S |
 | ✅ PERF-7 | `PRAGMA synchronous = NORMAL` (WAL-safe; autosave commits 4–6×/save at FULL today) | `db.rs` open() 22–25 | Medium — write latency, db-mutex hold | S |
 | PERF-8 | Collapse `queue_status` 4× COUNT(*) into one pass; rate-limit `emit_status` during sweeps | `queue.rs` 26–67 | Low-med | S |
 | PERF-9 | Code-split editor bundle: lazy `Editor`, dynamic lowlight grammars (capture window currently parses the full ~1 MB chunk too) | `Editor.tsx` 16/55, `main.tsx`, `App.tsx` 5–12 | Medium — startup ×2 webviews | M |

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Search, Sparkles, X } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
@@ -226,9 +226,12 @@ export function SummaryBar() {
   );
 }
 
-export function NoteItem({ note }: { note: Note }) {
+export const NoteItem = memo(function NoteItem({ note }: { note: Note }) {
   const selected = useStore((s) => s.selectedNote?.id === note.id);
-  const preview = note.snippet ? null : stripMarkdown(note.content).slice(0, 120);
+  const preview = useMemo(
+    () => (note.snippet ? null : stripMarkdown(note.content).slice(0, 120)),
+    [note.snippet, note.content],
+  );
 
   return (
     <button
@@ -282,4 +285,4 @@ export function NoteItem({ note }: { note: Note }) {
       </div>
     </button>
   );
-}
+});

@@ -38,10 +38,18 @@ export default function App() {
   useEffect(() => {
     void useStore.getState().init();
 
+    // The worker emits note-updated in bursts (embed batch = 8 per tick,
+    // sweeps = hundreds) — tag counts only need to settle once per burst.
+    let tagRefresh: ReturnType<typeof setTimeout> | null = null;
+    const scheduleTagRefresh = () => {
+      if (tagRefresh) clearTimeout(tagRefresh);
+      tagRefresh = setTimeout(() => void useStore.getState().refreshTags(), 400);
+    };
+
     const unsubs = [
       listen<Note>("note-updated", (e) => {
         useStore.getState().applyNoteUpdate(e.payload);
-        void useStore.getState().refreshTags();
+        scheduleTagRefresh();
       }),
       listen<QueueStatus>("queue-status", (e) => {
         useStore.getState().setQueue(e.payload);
@@ -77,6 +85,7 @@ export default function App() {
       }),
     ];
     return () => {
+      if (tagRefresh) clearTimeout(tagRefresh);
       for (const p of unsubs) void p.then((u) => u());
     };
   }, []);

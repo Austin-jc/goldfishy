@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Check,
@@ -87,7 +87,13 @@ export default function Sidebar() {
   const folders = useStore((s) => s.folders);
   const tags = useStore((s) => s.tags);
   const view = useStore((s) => s.view);
-  const queue = useStore((s) => s.queue);
+  // Narrow boolean selector — queue-status fires every tick while the worker
+  // runs; the sidebar shell only cares whether it's busy at all.
+  const busy = useStore(
+    (s) =>
+      (s.queue?.embed_pending ?? 0) + (s.queue?.llm_pending ?? 0) > 0 ||
+      Boolean(s.queue?.sweep_active),
+  );
   const notes = useStore((s) => s.notes);
   const tagFilter = useStore((s) => s.tagFilter);
   const searchResults = useStore((s) => s.searchResults);
@@ -226,9 +232,6 @@ export default function Sidebar() {
   const roots = ctx.childrenOf.get(null) ?? [];
   const unfiled = ctx.notesByFolder.get(null) ?? [];
   const pinnedNotes = useMemo(() => notes.filter((n) => n.pinned), [notes]);
-
-  const busy =
-    (queue?.embed_pending ?? 0) + (queue?.llm_pending ?? 0) > 0 || queue?.sweep_active;
 
   const untitledCount = useMemo(
     () => notes.filter((n) => !n.title.trim() && n.content.trim()).length,
@@ -1009,8 +1012,10 @@ async function duplicateNote(note: Note) {
   }
 }
 
-/** A note leaf inside the explorer tree: status icons + hover preview card. */
-function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
+/** A note leaf inside the explorer tree: status icons + hover preview card.
+ *  Memoized — worker bursts replace single notes in the store; rows whose
+ *  note object is unchanged skip re-rendering. */
+const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
   const active = useStore((s) => s.selectedNote?.id === note.id);
   // Live worker target — covers bulk titling/re-tagging/merging, which run
   // outside the status-flag pipeline.
@@ -1040,7 +1045,8 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
   };
   useEffect(() => stopPreview, []);
 
-  const snippet = stripMarkdown(note.content).slice(0, 220);
+  // Only computed while the hover card is actually showing.
+  const snippet = preview ? stripMarkdown(note.content).slice(0, 220) : "";
 
   return (
     <>
@@ -1166,9 +1172,11 @@ function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
       )}
     </>
   );
-}
+});
 
-function FolderNode({
+/** Memoized like TreeNoteRow — skips re-rendering when its props are stable
+ *  (the tree ctx object only changes when notes/folders/filters change). */
+const FolderNode = memo(function FolderNode({
   folder,
   depth,
   ctx,
@@ -1392,4 +1400,4 @@ function FolderNode({
       )}
     </div>
   );
-}
+});
