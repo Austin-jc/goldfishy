@@ -5,7 +5,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 ## Top picks (highest value across all sections)
 
 1. ✅ **Single source of truth for prompts + prompt versioning** (AI-3) — replaces the error-prone `ai.rs` ↔ `bench/src/prompts.ts` hand-mirror. *Adopting this changes golden rule 5 in `conventions.md`.* — **done:** `prompts/prompts.json` + `prompts.rs` loader; version stamped into bench results.
-2. **Preview/undo for AI rewrites** (AI-1, UX-6) — three independent research streams converged here; bulletify currently replaces text with only a buried snapshot as recourse.
+2. ✅ **Preview/undo for AI rewrites** (AI-1, UX-6) — three independent research streams converged here; bulletify currently replaces text with only a buried snapshot as recourse. — **done:** Auto-bullet now shows a sage-framed keep/discard preview; nothing is written until Keep (which still snapshots first).
 3. **Stop serializing Markdown per keystroke** (PERF-1) — typing latency, small fix.
 4. **Async-ify the remaining sync commands** (PERF-2) — the other half of the startup-unresponsiveness fix; mechanical.
 5. **`list_notes` returns excerpts, not full content; don't block first paint on it** (PERF-3, PERF-16).
@@ -21,7 +21,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 
 Gaps first, ordered by value. Verified against `HANDOFF.md` and the code before being marked a gap.
 
-- **AI-1 · Never silently replace user text — preview or one-tap undo.** Apple Writing Tools cycles each change with "Use Original"; Notion AI always ends keep/try-again/discard ([Smashing on agentic UX](https://www.smashingmagazine.com/2026/02/designing-agentic-ai-practical-ux-patterns/)). *Here:* `runBulletify` applies immediately with only a success toast; the snapshot is buried in History. Minimum: an **Undo** action on the toast calling `restore_note_version`. Better: sage-tinted keep/discard preview. (Merge already does review-first — keep that pattern.)
+- ✅ **AI-1 · Never silently replace user text — preview or one-tap undo.** Apple Writing Tools cycles each change with "Use Original"; Notion AI always ends keep/try-again/discard ([Smashing on agentic UX](https://www.smashingmagazine.com/2026/02/designing-agentic-ai-practical-ux-patterns/)). *Here:* `runBulletify` applies immediately with only a success toast; the snapshot is buried in History. Minimum: an **Undo** action on the toast calling `restore_note_version`. Better: sage-tinted keep/discard preview. (Merge already does review-first — keep that pattern.) *(Shipped June 2026: keep/discard preview via `ai_bulletify_preview` + `apply_note_rewrite`.)*
 - **AI-2 · One structured call per note, not three.** Per-call overhead dominates with small local models. *Here:* Queue-2 runs `generate_title` → `auto_tag_and_route` → `extract_actions` serially; one `json_schema` call returning `{title, tags, suggested_folder, actions}` halves wall time. Bench the quality cost first.
 - ✅ **AI-3 · Prompts as versioned artifacts, single source.** Duplicated prompts drift and evals silently measure the wrong thing ([prompt versioning guide](https://agenta.ai/blog/prompt-versioning-guide)). *Here:* the bench mirror rule is exactly this failure mode. Move prompts/schemas to one shared file (`include_str!` in Rust, imported in TS, or codegen), add `PROMPT_VERSION`, stamp it into bench results. *(Shipped June 2026.)*
 - **AI-4 · Error states name the failing component and the recovery plan.** *Here:* `worker-error` toasts raw errors; the 60s cooldown is invisible. Show cooldown in the queue footer ("LLM backend unreachable — retrying in 60s") and distinguish backend-down from schema-parse failure.
@@ -67,7 +67,7 @@ Ordered by value-for-effort. (6 = AI-1's preview pattern; listed once here for t
 3. **Recency group headers** (Today / Yesterday / Previous 30 days) in search results + relative timestamps on cards.
 4. **Shortcut hints in palette rows** — the palette teaches the keyboard (Linear pattern). Near-zero cost.
 5. **Word count / read time** in a quiet editor footer or info popover (Bear).
-6. **Inline accept/discard preview for AI rewrites** — sage-tinted proposed text (see AI-1).
+6. ✅ **Inline accept/discard preview for AI rewrites** — sage-tinted proposed text (see AI-1). *(Shipped June 2026.)*
 7. **Editor-only focus mode** — one shortcut collapses chrome; typewriter scrolling as phase 2 (iA Writer).
 8. **Version-history diff view** — added/removed lines highlighted before restore; reuses stored snapshots.
 9. **Outline/ToC popover** built from headings for long notes (Bear Info Panel).

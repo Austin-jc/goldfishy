@@ -789,9 +789,32 @@ pub async fn ai_retag_all(app: AppHandle) -> CmdResult<i64> {
     Ok(done)
 }
 
+/// Propose a bullet-point rewrite of the note. Returns the proposed markdown
+/// only; the user reviews it in a keep/discard preview before anything is
+/// written (`apply_note_rewrite`).
 #[tauri::command]
-pub async fn ai_bulletify(app: AppHandle, note_id: String) -> CmdResult<Note> {
-    let note = ai::bulletify(&app, &note_id).await.map_err(eanyhow)?;
+pub async fn ai_bulletify_preview(app: AppHandle, note_id: String) -> CmdResult<String> {
+    ai::bulletify(&app, &note_id).await.map_err(eanyhow)
+}
+
+/// Apply an LLM-proposed rewrite the user accepted in a preview. Always
+/// checkpoints the pre-rewrite state first (snapshot-before-AI-rewrites rule),
+/// so even an accepted rewrite stays recoverable from History.
+#[tauri::command]
+pub async fn apply_note_rewrite(app: AppHandle, note_id: String, content: String) -> CmdResult<Note> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let before = db::get_note(&db, &note_id).map_err(eanyhow)?;
+    db::snapshot_note(&db, &note_id, &before.title, &before.content).map_err(eanyhow)?;
+    db.execute(
+        "UPDATE notes SET content = ?1, updated_at = ?2,
+                embedding_status = 'STALE', llm_status = 'STALE'
+         WHERE id = ?3",
+        params![content, now_ms(), note_id],
+    )
+    .map_err(estr)?;
+    state.last_activity.store(now_ms(), Ordering::Relaxed);
+    let note = db::get_note(&db, &note_id).map_err(eanyhow)?;
     let _ = app.emit("note-updated", &note);
     Ok(note)
 }

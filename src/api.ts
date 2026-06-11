@@ -75,7 +75,11 @@ export const api = {
 
   // AI
   aiProcessNote: (noteId: string) => invoke<Note>("ai_process_note", { noteId }),
-  aiBulletify: (noteId: string) => invoke<Note>("ai_bulletify", { noteId }),
+  /** Returns proposed markdown only — apply with applyNoteRewrite after review. */
+  aiBulletifyPreview: (noteId: string) =>
+    invoke<string>("ai_bulletify_preview", { noteId }),
+  applyNoteRewrite: (noteId: string, content: string) =>
+    invoke<Note>("apply_note_rewrite", { noteId, content }),
   aiTitleUntitled: () => invoke<number>("ai_title_untitled"),
   aiRetagAll: () => invoke<number>("ai_retag_all"),
   aiSummarizeCollection: (kind: string, key: string) =>

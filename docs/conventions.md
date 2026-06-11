@@ -43,7 +43,7 @@ The rules for working in this codebase. Most were earned the hard way — when o
 
 ## AI feature guidelines
 
-- **Consent ladder**: silent is OK only for additive, reversible metadata (tags, titles on untitled notes). Anything that moves, schedules, or rewrites needs an explicit Accept (folder suggestions, action items) or a snapshot + obvious undo (bulletify, merge).
+- **Consent ladder**: silent is OK only for additive, reversible metadata (tags, titles on untitled notes). Anything that moves, schedules, or rewrites needs an explicit Accept (folder suggestions, action items) or a review-first keep/discard preview (bulletify, merge) — and rewrites still snapshot unconditionally on apply (golden rule 4).
 - **Distinguish AI output** from user input visually (sage ramp, ✨) and in data (`source='ai'`); never overwrite manual equivalents (manual tags, user-typed titles).
 - **Local by default**: the automatic background pipeline only ever uses the local backend. Cloud/frontier models (when added) are explicit per-action calls, clearly labeled, off by default.
 - **Idle-respecting**: background AI runs only after typing stops (debounces) and never blocks the UI with modals; results fade in.

@@ -499,7 +499,9 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
 }
 
 /// Restructure stream-of-consciousness text into concise markdown bullets.
-pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
+/// Returns the proposed markdown only — nothing is written. The editor shows
+/// a keep/discard preview and applies via `apply_note_rewrite`.
+pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<String> {
     let state = app.state::<AppState>();
     let content = {
         let db = state.db.lock().unwrap();
@@ -527,16 +529,7 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
     if new_content.trim().is_empty() {
         bail!("LLM returned an empty result");
     }
-
-    let db = state.db.lock().unwrap();
-    // AI rewrites always checkpoint the original first.
-    let before = db::get_note(&db, note_id)?;
-    db::snapshot_note(&db, note_id, &before.title, &before.content)?;
-    db.execute(
-        "UPDATE notes SET content = ?1, updated_at = ?2, embedding_status = 'STALE', llm_status = 'STALE' WHERE id = ?3",
-        rusqlite::params![new_content, now_ms(), note_id],
-    )?;
-    Ok(db::get_note(&db, note_id)?)
+    Ok(new_content)
 }
 
 /// Merge several overlapping notes into one coherent markdown document.

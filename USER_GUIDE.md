@@ -86,7 +86,7 @@ Once AI is enabled (next section), GoldFishy can:
 
 - 🏷 **Auto-tag** — a few seconds after you stop typing, the app quietly adds three suggested tags to your note. AI tags look green with a ✨; your own tags look neutral. Don't like one? Hover over it and click the ×.
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
-- • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and it gets reorganized into tidy bullet points.
+- • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and a preview of the tidied bullet points appears — click **Keep** to apply it (the old text is saved to History) or **Discard** to keep your note as-is.
 - 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it.
 - ✅ **Action items & reminders** — the AI also spots tasks and follow-ups in your notes ("call the dentist", "send the report by Friday") and proposes them in the **Actions panel** (the bell at the top of the left panel). Nothing is scheduled until you accept it.
 

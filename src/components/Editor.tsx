@@ -94,6 +94,8 @@ function EditorInner({ noteId }: { noteId: string }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  /** Proposed AI rewrite awaiting keep/discard; nothing is saved until Keep. */
+  const [rewriteProposal, setRewriteProposal] = useState<string | null>(null);
 
   const titleRef = useRef(note.title);
   const contentRef = useRef(note.content);
@@ -272,15 +274,30 @@ function EditorInner({ noteId }: { noteId: string }) {
     await saveNow();
     setAiWorking("bullets");
     try {
-      const updated = await api.aiBulletify(noteId);
-      contentRef.current = updated.content;
-      editor?.commands.setContent(updated.content);
-      useStore.getState().applyNoteUpdate(updated);
-      useStore.getState().toast("Restructured into bullets", "success");
+      // Preview only — the note is untouched until the user clicks Keep.
+      setRewriteProposal(await api.aiBulletifyPreview(noteId));
     } catch (e) {
       useStore.getState().toast(String(e), "error");
     } finally {
       setAiWorking("");
+    }
+  };
+
+  const keepRewrite = async () => {
+    if (rewriteProposal === null) return;
+    try {
+      const updated = await api.applyNoteRewrite(noteId, rewriteProposal);
+      contentRef.current = updated.content;
+      editor?.commands.setContent(updated.content);
+      useStore.getState().applyNoteUpdate(updated);
+      useStore.getState().toast(
+        "Restructured into bullets — the previous version is in History",
+        "success",
+      );
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setRewriteProposal(null);
     }
   };
 
@@ -543,7 +560,77 @@ function EditorInner({ noteId }: { noteId: string }) {
       </div>
 
       {editor && <SelectionMenu editor={editor} />}
+
+      {rewriteProposal !== null && (
+        <RewritePreview
+          proposal={rewriteProposal}
+          onKeep={() => void keepRewrite()}
+          onDiscard={() => setRewriteProposal(null)}
+        />
+      )}
     </main>
+  );
+}
+
+/** Review panel for an AI rewrite — sage-framed (AI-derived), nothing is
+ *  written until Keep. Esc discards. */
+function RewritePreview({
+  proposal,
+  onKeep,
+  onDiscard,
+}: {
+  proposal: string;
+  onKeep: () => void;
+  onDiscard: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onDiscard();
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [onDiscard]);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-8"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onDiscard();
+      }}
+    >
+      <div className="flex max-h-[80vh] w-[640px] flex-col overflow-hidden rounded-xl border border-sage-700/60 bg-stone-900 shadow-2xl shadow-black/60">
+        <div className="flex items-center gap-2 px-4 pb-2 pt-3">
+          <Sparkles size={14} className="text-sage-300" />
+          <span className="text-sm font-semibold text-stone-100">Auto-bullet preview</span>
+          <span className="ml-auto text-[10px] text-stone-500">
+            Keep replaces the note body — the current version is checkpointed first
+          </span>
+        </div>
+        <div className="mx-3 flex-1 overflow-y-auto rounded-lg bg-sage-900/20 px-4 py-3">
+          <pre className="whitespace-pre-wrap font-[inherit] text-[13px] leading-relaxed text-stone-200">
+            {proposal}
+          </pre>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3">
+          <button
+            onClick={onDiscard}
+            className="cursor-pointer rounded-lg px-3 py-1.5 text-xs text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
+          >
+            Discard (esc)
+          </button>
+          <button
+            onClick={onKeep}
+            className="cursor-pointer rounded-lg bg-sage-700 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sage-500"
+          >
+            Keep
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
