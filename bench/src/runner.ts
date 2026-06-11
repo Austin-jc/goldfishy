@@ -15,6 +15,7 @@ import {
   buildActions,
   buildBulletify,
   buildMerge,
+  buildOrganize,
   buildSummarize,
   buildTagRoute,
   buildTitle,
@@ -26,6 +27,7 @@ import {
   scoreActions,
   scoreBulletify,
   scoreMerge,
+  scoreOrganize,
   scoreSummary,
   scoreTags,
   scoreTitle,
@@ -76,6 +78,23 @@ function buildCases(fixtures: Fixtures, today: string): BenchCase[] {
       request: buildActions({ ...f, today }),
       score: (r) => scoreActions(r, f),
       judgeInput: `TODAY: ${today}\nNOTE TITLE: ${f.title}\nNOTE CONTENT:\n${f.content}`,
+    });
+  }
+  // The worker's combined single-call pipeline, graded on the tags fixtures
+  // (tag/folder checks identical to the tags feature + combined-shape checks).
+  for (const f of fixtures.tags) {
+    cases.push({
+      feature: "organize",
+      fixture: f.id,
+      request: buildOrganize({
+        ...f,
+        categories: [],
+        today,
+        autoTitle: f.title.trim() === "",
+        extractActions: true,
+      }),
+      score: (r) => scoreOrganize(r, f),
+      judgeInput: `TODAY: ${today}\nFOLDERS: ${f.folders.join(", ")}\nEXISTING TAGS: ${f.existingTags.join(", ")}\nNOTE TITLE: ${f.title}\nNOTE CONTENT:\n${f.content}`,
     });
   }
   for (const f of fixtures.bulletify) {

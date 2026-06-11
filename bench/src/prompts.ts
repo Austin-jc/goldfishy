@@ -230,6 +230,52 @@ export function buildActions(opts: ActionsInput): BuiltRequest {
   };
 }
 
+// ---- combined organize (the worker's single-call pipeline) ----
+
+export interface OrganizeInput extends TagRouteInput {
+  categories: string[];
+  /** YYYY-MM-DD; pinned in the benchmark so date resolution grades deterministically. */
+  today: string;
+  /** True when the note is untitled and auto-titling is on. */
+  autoTitle: boolean;
+  extractActions: boolean;
+}
+
+export function buildOrganize(opts: OrganizeInput): BuiltRequest {
+  const t = "organize";
+  const titleInstructions = opts.autoTitle
+    ? text(t, "title_instructions")
+    : text(t, "title_instructions_off");
+  const tagInstructions =
+    opts.maxTags === 0
+      ? text(t, "tag_instructions_off")
+      : fill(text(t, "tag_instructions"), {
+          max_tags: String(opts.maxTags),
+          tags_json: JSON.stringify(opts.existingTags),
+        });
+  const folderInstructions = opts.suggestFolders
+    ? fill(text(t, "folder_instructions"), { folders_json: JSON.stringify(opts.folders) })
+    : text(t, "folder_instructions_off");
+  const actionsInstructions = opts.extractActions
+    ? fill(text(t, "actions_instructions"), { cats_json: JSON.stringify(opts.categories) })
+    : text(t, "actions_instructions_off");
+  return {
+    system: text(t, "system"),
+    user: fill(text(t, "user"), {
+      today: `${opts.today} (${weekdayName(opts.today)})`,
+      title_instructions: titleInstructions,
+      tag_instructions: tagInstructions,
+      folder_instructions: folderInstructions,
+      actions_instructions: actionsInstructions,
+      title: truncateChars(opts.title, limit(t, "title")),
+      content: truncateChars(opts.content, limit(t, "content")),
+    }),
+    maxTokens: task(t).max_tokens,
+    schemaName: task(t).schema_name,
+    schema: task(t).schema,
+  };
+}
+
 // ---- bulletify ----
 
 export function buildBulletify(content: string): BuiltRequest {

@@ -111,6 +111,55 @@ export function scoreTags(reply: string, f: TagsFixture): ScoreResult {
   return finish(true, checks, { tags: appTags, folder: resolvedFolder });
 }
 
+// ---- combined organize ----
+
+/**
+ * Scores the worker's single-call pipeline on the tags fixtures: the tag and
+ * folder checks are identical to scoreTags (same fields in the reply), plus
+ * shape checks for the combined object's title and items.
+ */
+export function scoreOrganize(reply: string, f: TagsFixture): ScoreResult {
+  const json = extractJson(reply);
+  const valid =
+    json !== null &&
+    Array.isArray(json.tags) &&
+    "folder" in json &&
+    "title" in json &&
+    Array.isArray(json.items);
+  if (!valid) return finish(false, []);
+  const base = scoreTags(reply, f);
+  if (!base.valid) return finish(false, []);
+
+  const wantTitle = f.title.trim() === "";
+  const items = json.items as unknown[];
+  const checks: CheckResult[] = [
+    ...base.checks,
+    wantTitle
+      ? {
+          name: "proposed a title for the untitled note",
+          pass: typeof json.title === "string" && json.title.trim() !== "",
+          detail: String(json.title),
+        }
+      : {
+          name: "left title null for a titled note",
+          pass: json.title === null,
+          detail: String(json.title),
+        },
+    {
+      name: "items are well-formed",
+      pass: items.every(
+        (v) =>
+          typeof v === "object" &&
+          v !== null &&
+          typeof (v as Record<string, unknown>).text === "string" &&
+          typeof (v as Record<string, unknown>).category === "string",
+      ),
+      detail: `${items.length} items`,
+    },
+  ];
+  return finish(true, checks, { ...(base.parsed as object), title: json.title, items });
+}
+
 // ---- action extraction ----
 
 interface ExtractedAction {

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "_readme": "Single source of truth for every LLM prompt, JSON schema, token cap and truncation limit. Loaded by src-tauri/src/prompts.rs (include_str!) and bench/src/prompts.ts. {placeholders} are filled at call time; literal braces elsewhere are sent as-is. Bump `version` on ANY change here — it is stamped into bench results so scores are comparable.",
   "title": {
     "system": "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
@@ -51,6 +51,44 @@
         }
       },
       "required": ["items"],
+      "additionalProperties": false
+    }
+  },
+  "organize": {
+    "system": "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.",
+    "title_instructions": "The note is untitled. Set \"title\" to a concise, descriptive title (3-8 words) — plain words, no quotes, no markdown, no trailing punctuation.",
+    "title_instructions_off": "Use null for the title.",
+    "tag_instructions": "Suggest at most {max_tags} short lowercase topical tags (1-2 words each) — fewer is better, and an empty list is fine if nothing fits strongly. Tags must name the note's topic or domain (e.g. \"rust\", \"recipes\", \"travel\"). Reuse a tag from this existing vocabulary whenever one fits: {tags_json}. Never use status or filler words (done, todo, wip, note, notes, text, misc, stuff, idea, random), bare verbs, or words that merely appear in the note without describing it.",
+    "tag_instructions_off": "Return an empty tags list.",
+    "folder_instructions": "Also choose the single best destination folder for the note from this list: {folders_json}. Use null for the folder if none fits well or the list is empty.",
+    "folder_instructions_off": "Use null for the folder.",
+    "actions_instructions": "Also extract up to 6 concrete action items (tasks, follow-ups, reminders) from the note — only real actions the author still needs to do, not facts, ideas, or completed work; an empty list is fine. For each item give: \"text\" (short imperative phrase), \"category\" (one or two lowercase words; reuse one of {cats_json} when it fits, else invent a sensible one like \"work\", \"errands\", \"health\", \"follow-up\"), and \"due\" — \"YYYY-MM-DD\" or \"YYYY-MM-DD HH:MM\" if the note implies a date or deadline (resolve relative phrases like \"tomorrow\" or \"next friday\" using today's date), else null.",
+    "actions_instructions_off": "Return an empty items list.",
+    "user": "Today is {today}. Organize the note below in one pass.\n{title_instructions}\n{tag_instructions}\n{folder_instructions}\n{actions_instructions}\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}\n\nReply with JSON exactly like: {\"title\": null, \"tags\": [\"tag1\"], \"folder\": \"folder name or null\", \"items\": [{\"text\": \"...\", \"category\": \"...\", \"due\": null}]}",
+    "max_tokens": 900,
+    "limits": { "title": 200, "content": 8000 },
+    "schema_name": "note_organize",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "folder": { "type": ["string", "null"] },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "category": { "type": "string" },
+              "due": { "type": ["string", "null"] }
+            },
+            "required": ["text", "category", "due"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["title", "tags", "folder", "items"],
       "additionalProperties": false
     }
   },

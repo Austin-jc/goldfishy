@@ -320,43 +320,17 @@ async fn tick(app: &AppHandle) -> Result<()> {
                         params![id],
                     )?;
                 }
-                // Untitled notes get an AI title first, so everything
-                // downstream (labels, tagging, search) sees it.
                 let mut label = title.trim().to_string();
                 if label.is_empty() {
                     label = "Untitled".to_string();
                 }
-                if settings.auto_title && title.trim().is_empty() {
-                    set_activity(
-                        app,
-                        Some(("Titling an untitled note…".to_string(), Some(id.clone()))),
-                    );
-                    match crate::ai::generate_title(app, &id).await {
-                        Ok(note) => {
-                            if !note.title.trim().is_empty() {
-                                label = note.title.clone();
-                            }
-                            let _ = app.emit("note-updated", note);
-                        }
-                        Err(e) => eprintln!("[title] generation failed for {id}: {e:#}"),
-                    }
-                }
                 set_activity(app, Some((format!("Organizing “{label}”…"), Some(id.clone()))));
-                match crate::ai::auto_tag_and_route(app, &id).await {
+                // One structured call covers title (if untitled), tags, folder
+                // routing and action extraction — the old three-call sequence
+                // paid per-call overhead twice more for the same result.
+                match crate::ai::organize_note(app, &id).await {
                     Ok(note) => {
                         let _ = app.emit("note-updated", note);
-                        if settings.extract_actions {
-                            set_activity(
-                                app,
-                                Some((
-                                    format!("Extracting actions from “{label}”…"),
-                                    Some(id.clone()),
-                                )),
-                            );
-                            if let Err(e) = crate::ai::extract_actions(app, &id).await {
-                                eprintln!("[actions] extraction failed for {id}: {e:#}");
-                            }
-                        }
                     }
                     Err(e) => {
                         {

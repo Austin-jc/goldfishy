@@ -4,6 +4,7 @@ export type FeatureName =
   | "title"
   | "tags"
   | "actions"
+  | "organize"
   | "bulletify"
   | "merge"
   | "summary";
@@ -12,6 +13,7 @@ export const ALL_FEATURES: FeatureName[] = [
   "title",
   "tags",
   "actions",
+  "organize",
   "bulletify",
   "merge",
   "summary",

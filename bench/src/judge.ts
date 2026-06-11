@@ -23,6 +23,8 @@ const RUBRICS: Record<FeatureName, string> = {
     "The app suggested topical tags and a destination folder for the note below (JSON). A 5 picks precise topic tags a careful human organizer would choose and the obviously right folder; a 3 is plausible but generic; a 1 tags surface words, uses status/filler words, or routes to a wrong folder.",
   actions:
     "The app extracted action items (JSON) from the note below. A 5 finds exactly the real outstanding actions with sensible categories and correctly resolved due dates, and nothing else; a 3 misses or pads slightly; a 1 invents actions, includes completed work or plain facts, or mangles dates. An empty items list is the correct output when the note contains no actions.",
+  organize:
+    "The app organized the note below in one pass (JSON): a title (only when asked — null otherwise), topical tags, a destination folder, and outstanding action items. A 5 nails all requested parts the way a careful human organizer would; a 3 gets tags/folder right but is weak on the title or actions; a 1 is wrong on the tags or folder, invents actions, or titles when told not to.",
   bulletify:
     "The app restructured the note below into markdown bullets. A 5 is well-grouped, concise, loses no information, and keeps every link and image reference; a 3 loses minor detail or has awkward grouping; a 1 drops substantive content or invents content.",
   merge:

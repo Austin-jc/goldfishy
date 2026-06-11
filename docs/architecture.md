@@ -61,7 +61,7 @@ A single async worker ticks every 1s:
 
 1. **Reminders** — fire due `action_items` (system notification + `action-due` event); runs even in Manual mode. Also: trash purge (~6h cadence) and scheduled backups (~30 min check).
 2. **Queue 1 — embeddings** (high priority): batch up to 8 STALE notes, debounced after typing stops; embeds on the blocking pool; strict priority over Queue 2.
-3. **Queue 2 — LLM** (low priority): one note per tick, only when Queue 1 is empty and the user is idle: `generate_title` (if untitled) → `auto_tag_and_route` → `extract_actions` (if enabled).
+3. **Queue 2 — LLM** (low priority): one note per tick, only when Queue 1 is empty and the user is idle: `organize_note` — one structured call returning `{title, tags, folder, items}` (title only when untitled, actions only when enabled). Manual per-feature buttons still use the focused prompts.
 
 The worker publishes a live `current_activity` label + note id into `QueueStatus` so the UI can show what's being processed.
 

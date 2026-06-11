@@ -38,7 +38,7 @@ src-tauri/src/                # backend
 
 ## Core architecture
 
-**Dual-queue worker** (`queue.rs`, 1s tick): per-note `embedding_status` / `llm_status` ∈ `CLEAN | PENDING | STALE`. Tick order: (1) fire due reminders — runs even in Manual mode; (2) embed batch (≤8 stale notes, debounced); (3) one LLM note (only when embed queue empty AND user idle) → `generate_title` if untitled, `auto_tag_and_route`, then `extract_actions` if enabled. Failures set a 60s cooldown (`*_cooldown_until`). `reindex_all` marks things STALE and sets `sweep_active` for a drain-everything sweep. While working, the worker publishes a live `current_activity` label + `current_note_id` (`AppState.current_activity` → `QueueStatus`) — shown in the sidebar status footer and queue popover (footer clickability keys off activity too, since extraction runs after counts hit zero).
+**Dual-queue worker** (`queue.rs`, 1s tick): per-note `embedding_status` / `llm_status` ∈ `CLEAN | PENDING | STALE`. Tick order: (1) fire due reminders — runs even in Manual mode; (2) embed batch (≤8 stale notes, debounced); (3) one LLM note (only when embed queue empty AND user idle) → `ai::organize_note`, ONE structured call returning `{title, tags, folder, items}` (title only if untitled + auto_title; actions only if enabled) — replaces the old `generate_title` → `auto_tag_and_route` → `extract_actions` sequence, roughly halving per-note wall time. The focused per-feature functions still back the manual Organize/Actions buttons and bulk commands. Failures set a 60s cooldown (`*_cooldown_until`). `reindex_all` marks things STALE and sets `sweep_active` for a drain-everything sweep. While working, the worker publishes a live `current_activity` label + `current_note_id` (`AppState.current_activity` → `QueueStatus`) — shown in the sidebar status footer and queue popover (footer clickability keys off activity too, since extraction runs after counts hit zero).
 
 **Auto-titling** (`ai.rs::generate_title`): untitled notes with content get an LLM title when the worker reaches them (and on manual Organize). The SQL guard `WHERE title = ''` prevents clobbering a title the user typed mid-flight; the editor adopts an externally generated title only while its local title field is empty (otherwise autosave would wipe it back).
 
@@ -130,5 +130,4 @@ Tiptap v2 (pinned ~2.27): `StarterKit.configure({ codeBlock: false })` + `CodeBl
 - `action-due` system notifications: first one triggers the macOS permission prompt; nothing in-app explains a denial.
 - Bundle is ~970KB minified (lowlight grammars + tiptap) — fine for desktop, code-split if it ever matters.
 - Categories are free-form lowercase strings; no color coding or rename-across-items yet.
-- `extract_actions` runs serially inside the Queue-2 slot, doubling LLM latency per note when enabled.
 - Semantic search scans all embeddings in-process — fine to ~thousands of notes; `sqlite-vec` is the contained upgrade path (`embed.rs`).

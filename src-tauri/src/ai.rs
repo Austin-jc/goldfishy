@@ -10,9 +10,15 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
 
 use crate::db::{self, now_ms};
-use crate::models::{ActionItem, AppSettings, Note};
+use crate::models::{ActionItem, AppSettings, Folder, Note};
 use crate::prompts;
 use crate::state::{AppState, SidecarProc};
+
+/// Code-side backstop against junk tags the prompt already bans.
+const TAG_STOPWORDS: [&str; 12] = [
+    "done", "todo", "wip", "note", "notes", "text", "misc", "stuff", "idea", "ideas",
+    "random", "general",
+];
 
 /// Context window we ask the backend to use. Long-note tasks overflow the
 /// common 4096 default — `bulletify` sends ~12k chars (~4k tokens) and
@@ -302,11 +308,22 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
 
-    const TAG_STOPWORDS: [&str; 12] = [
-        "done", "todo", "wip", "note", "notes", "text", "misc", "stuff", "idea", "ideas",
-        "random", "general",
-    ];
-    let tags: Vec<String> = parsed["tags"]
+    let tags = parse_tags(&parsed, max_tags);
+    let folder_name = if suggest_folders {
+        parsed["folder"].as_str().map(str::to_string)
+    } else {
+        None
+    };
+
+    let db = state.db.lock().unwrap();
+    apply_tags_and_route(&db, note_id, &tags, folder_name.as_deref(), &folders, &input)?;
+    Ok(db::get_note(&db, note_id)?)
+}
+
+/// Normalize the reply's tag list the way the app stores it: lowercase,
+/// hyphenated, stopwords dropped, clamped to the per-note maximum.
+fn parse_tags(parsed: &serde_json::Value, max_tags: usize) -> Vec<String> {
+    parsed["tags"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -316,19 +333,25 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
                 .take(max_tags)
                 .collect()
         })
-        .unwrap_or_default();
-    let folder_name = if suggest_folders {
-        parsed["folder"].as_str().map(str::to_string)
-    } else {
-        None
-    };
+        .unwrap_or_default()
+}
 
-    let db = state.db.lock().unwrap();
+/// Write organize results: AI tags wiped + rewritten (manual tags untouched),
+/// folder suggestion resolved by name, `last_llm_input` recorded, and the
+/// status flipped CLEAN only if the note wasn't edited while the LLM ran.
+fn apply_tags_and_route(
+    db: &rusqlite::Connection,
+    note_id: &str,
+    tags: &[String],
+    folder_name: Option<&str>,
+    folders: &[Folder],
+    input: &str,
+) -> Result<()> {
     db.execute(
         "DELETE FROM note_tags WHERE note_id = ?1 AND source = 'ai'",
         rusqlite::params![note_id],
     )?;
-    for t in &tags {
+    for t in tags {
         db.execute(
             "INSERT OR IGNORE INTO note_tags(note_id, tag, source) VALUES (?1, ?2, 'ai')",
             rusqlite::params![note_id, t],
@@ -357,8 +380,7 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
         "UPDATE notes SET llm_status = 'CLEAN' WHERE id = ?1 AND llm_status = 'PENDING'",
         rusqlite::params![note_id],
     )?;
-
-    Ok(db::get_note(&db, note_id)?)
+    Ok(())
 }
 
 fn normalize_action_text(s: &str) -> String {
@@ -432,7 +454,20 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
     .await?;
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
-    let extracted: Vec<(String, String, Option<i64>)> = parsed["items"]
+    let extracted = parse_action_items(&parsed["items"]);
+    reconcile_actions(app, note_id, &extracted)?;
+
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    Ok(db::list_action_items(&db)?
+        .into_iter()
+        .filter(|a| a.note_id.as_deref() == Some(note_id) && a.status == "proposed")
+        .collect())
+}
+
+/// Normalize an extraction reply's `items` array into (text, category, due).
+fn parse_action_items(items: &serde_json::Value) -> Vec<(String, String, Option<i64>)> {
+    items
         .as_array()
         .map(|arr| {
             arr.iter()
@@ -452,8 +487,18 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
                 .take(6)
                 .collect()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
 
+/// Reconcile freshly extracted items with what's already known for the note:
+/// prune proposals that vanished from the note, never re-propose any text
+/// already known (dismissed rows are kept as tombstones for this).
+fn reconcile_actions(
+    app: &AppHandle,
+    note_id: &str,
+    extracted: &[(String, String, Option<i64>)],
+) -> Result<()> {
+    let state = app.state::<AppState>();
     let now = now_ms();
     {
         let db = state.db.lock().unwrap();
@@ -477,7 +522,7 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
             }
         }
         // Insert genuinely new items (never re-propose known ones, incl. dismissed).
-        for (text, category, due) in &extracted {
+        for (text, category, due) in extracted {
             let key = normalize_action_text(text);
             if existing.iter().any(|(_, t, _)| normalize_action_text(t) == key) {
                 continue;
@@ -489,13 +534,8 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
             )?;
         }
     }
-
     let _ = app.emit("action-items-changed", ());
-    let db = state.db.lock().unwrap();
-    Ok(db::list_action_items(&db)?
-        .into_iter()
-        .filter(|a| a.note_id.as_deref() == Some(note_id) && a.status == "proposed")
-        .collect())
+    Ok(())
 }
 
 /// Restructure stream-of-consciousness text into concise markdown bullets.
@@ -591,17 +631,7 @@ pub async fn generate_title(app: &AppHandle, note_id: &str) -> Result<Note> {
         None,
     )
     .await?;
-    let title: String = strip_fences(&reply)
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("")
-        .trim()
-        .trim_matches(['"', '“', '”', '\'', '`', '#'])
-        .trim_end_matches(['.', '!'])
-        .trim()
-        .chars()
-        .take(80)
-        .collect();
+    let title = clean_title(&reply);
     if title.is_empty() {
         bail!("LLM returned an empty title");
     }
@@ -613,6 +643,149 @@ pub async fn generate_title(app: &AppHandle, note_id: &str) -> Result<Note> {
          WHERE id = ?3 AND title = ''",
         rusqlite::params![title, now_ms(), note_id],
     )?;
+    Ok(db::get_note(&db, note_id)?)
+}
+
+/// Title cleanup shared by `generate_title` and `organize_note`: first
+/// non-empty line, quotes/fences/hashes/punctuation stripped, capped at 80.
+fn clean_title(reply: &str) -> String {
+    strip_fences(reply)
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .trim_matches(['"', '“', '”', '\'', '`', '#'])
+        .trim_end_matches(['.', '!'])
+        .trim()
+        .chars()
+        .take(80)
+        .collect()
+}
+
+/// Queue-2 task: title (if untitled) + tags + folder routing + action
+/// extraction in ONE structured call. Per-call overhead dominates with small
+/// local models, so this roughly halves per-note wall time and tokens versus
+/// the old generate_title → auto_tag_and_route → extract_actions sequence.
+/// Manual per-feature commands still use the focused prompts.
+pub async fn organize_note(app: &AppHandle, note_id: &str) -> Result<Note> {
+    let state = app.state::<AppState>();
+    let (note_title, note_content, folders, existing_tags, categories, settings) = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        let folders = db::list_folders(&db)?;
+        let existing_tags: Vec<String> = db::list_tags(&db)?
+            .into_iter()
+            .take(40)
+            .map(|t| t.tag)
+            .collect();
+        let mut stmt = db.prepare("SELECT DISTINCT category FROM action_items ORDER BY category")?;
+        let categories: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        let settings = db::load_settings(&db);
+        (note.title, note.content, folders, existing_tags, categories, settings)
+    };
+
+    let max_tags = settings.auto_tag_max.min(5) as usize;
+    let want_title = settings.auto_title && note_title.trim().is_empty();
+    let want_actions = settings.extract_actions;
+
+    let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+    let folders_json = serde_json::to_string(&folder_names)?;
+    let tags_json = serde_json::to_string(&existing_tags)?;
+    let cats_json = serde_json::to_string(&categories)?;
+    let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
+
+    let t = "organize";
+    let title_instructions = if want_title {
+        prompts::text(t, "title_instructions").to_string()
+    } else {
+        prompts::text(t, "title_instructions_off").to_string()
+    };
+    let tag_instructions = if max_tags == 0 {
+        prompts::text(t, "tag_instructions_off").to_string()
+    } else {
+        prompts::fill(
+            prompts::text(t, "tag_instructions"),
+            &[("max_tags", max_tags.to_string().as_str()), ("tags_json", &tags_json)],
+        )
+    };
+    let folder_instructions = if settings.suggest_folders {
+        prompts::fill(prompts::text(t, "folder_instructions"), &[("folders_json", &folders_json)])
+    } else {
+        prompts::text(t, "folder_instructions_off").to_string()
+    };
+    let actions_instructions = if want_actions {
+        prompts::fill(prompts::text(t, "actions_instructions"), &[("cats_json", cats_json.as_str())])
+    } else {
+        prompts::text(t, "actions_instructions_off").to_string()
+    };
+    let user = prompts::fill(
+        prompts::text(t, "user"),
+        &[
+            ("today", today.as_str()),
+            ("title_instructions", &title_instructions),
+            ("tag_instructions", &tag_instructions),
+            ("folder_instructions", &folder_instructions),
+            ("actions_instructions", &actions_instructions),
+            ("title", &truncate_chars(&note_title, prompts::limit(t, "title"))),
+            ("content", &truncate_chars(&note_content, prompts::limit(t, "content"))),
+        ],
+    );
+
+    let reply = chat(
+        app,
+        prompts::text(t, "system"),
+        &user,
+        prompts::max_tokens(t),
+        Some(prompts::response_format(t)),
+    )
+    .await?;
+    let parsed =
+        extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
+
+    // Title first, so everything downstream (labels, last_llm_input) sees it.
+    if want_title {
+        if let Some(raw) = parsed["title"].as_str() {
+            let cleaned = clean_title(raw);
+            if !cleaned.is_empty() {
+                let db = state.db.lock().unwrap();
+                // `AND title = ''` guards against a title the user typed while we waited.
+                db.execute(
+                    "UPDATE notes SET title = ?1, updated_at = ?2, embedding_status = 'STALE'
+                     WHERE id = ?3 AND title = ''",
+                    rusqlite::params![cleaned, now_ms(), note_id],
+                )?;
+            }
+        }
+    }
+
+    let tags = parse_tags(&parsed, max_tags);
+    let folder_name = if settings.suggest_folders {
+        parsed["folder"].as_str().map(str::to_string)
+    } else {
+        None
+    };
+    {
+        let db = state.db.lock().unwrap();
+        // last_llm_input reflects the note as stored now (incl. a fresh title),
+        // matching what the old pipeline recorded after titling.
+        let (cur_title, cur_content): (String, String) = db.query_row(
+            "SELECT title, content FROM notes WHERE id = ?1",
+            rusqlite::params![note_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let input = db::ai_input(&cur_title, &cur_content);
+        apply_tags_and_route(&db, note_id, &tags, folder_name.as_deref(), &folders, &input)?;
+    }
+
+    if want_actions {
+        let extracted = parse_action_items(&parsed["items"]);
+        reconcile_actions(app, note_id, &extracted)?;
+    }
+
+    let db = state.db.lock().unwrap();
     Ok(db::get_note(&db, note_id)?)
 }
 
