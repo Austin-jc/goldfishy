@@ -67,7 +67,7 @@ You can use folders, tags, both, or neither — the search is good enough that m
 Press **⌘K** at any time to open the quick search window (like Spotlight). Start typing to see matching notes instantly, use the ↑↓ arrow keys to pick one, and press Enter to open it. Two more tricks:
 
 - Press **Tab** to cycle the search style: smart (the default blend) → word-matching → "search by meaning".
-- Type **>** as the first character to see commands instead — new note, settings, re-index, export — and run them with Enter.
+- Type **>** as the first character to see commands instead — new note, quick capture, find in note, toggle sidebar, settings, re-index, export — each showing its keyboard shortcut, so the palette doubles as a cheat sheet.
 
 ### The search box
 

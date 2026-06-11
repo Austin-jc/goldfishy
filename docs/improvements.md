@@ -65,7 +65,7 @@ Ordered by value-for-effort. (6 = AI-1's preview pattern; listed once here for t
 1. ✅ **Quick-switcher mode in the palette** — titles first, commands second, recents on empty query, Shift+Enter creates from query. *(Shipped June 2026.)*
 2. ✅ **Zero-results "Create '<query>'" row** in SearchBar — every failed search becomes capture. *(Shipped June 2026.)*
 3. ✅ **Recency group headers** (Today / Yesterday / Previous 30 days) in search results + relative timestamps on cards. *(Shipped June 2026.)*
-4. **Shortcut hints in palette rows** — the palette teaches the keyboard (Linear pattern). Near-zero cost.
+4. ✅ **Shortcut hints in palette rows** — the palette teaches the keyboard (Linear pattern). Near-zero cost. *(Shipped June 2026 — every shortcut-backed action is a palette row with its ⌘-hint: new note, quick capture, find in note, toggle sidebar, settings.)*
 5. **Word count / read time** in a quiet editor footer or info popover (Bear).
 6. ✅ **Inline accept/discard preview for AI rewrites** — sage-tinted proposed text (see AI-1). *(Shipped June 2026.)*
 7. **Editor-only focus mode** — one shortcut collapses chrome; typewriter scrolling as phase 2 (iA Writer).

@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   ChevronRight,
   Download,
   FileText,
   Loader2,
+  PanelLeft,
   Plus,
   RefreshCw,
   Search,
   Settings,
   Sparkles,
   Wand2,
+  Zap,
 } from "lucide-react";
 import { api } from "../api";
 import { recentNoteIds, useStore } from "../store";
@@ -26,6 +29,7 @@ interface Command {
 
 function buildCommands(close: () => void): Command[] {
   const llmReady = useStore.getState().settings?.llm_backend !== "none";
+  const noteOpen = useStore.getState().selectedNote !== null;
   return [
     {
       label: "New note",
@@ -34,6 +38,44 @@ function buildCommands(close: () => void): Command[] {
       run: () => {
         close();
         void useStore.getState().createNote();
+      },
+    },
+    {
+      label: "Quick capture",
+      hint: "⌘⇧N",
+      icon: <Zap size={14} />,
+      run: async () => {
+        close();
+        const win = await WebviewWindow.getByLabel("capture");
+        if (win) {
+          await win.show();
+          await win.setFocus();
+        }
+      },
+    },
+    ...(noteOpen
+      ? [
+          {
+            label: "Find in note",
+            hint: "⌘F",
+            icon: <Search size={14} />,
+            run: () => {
+              close();
+              // The editor's global ⌘F listener opens the find bar.
+              window.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "f", metaKey: true }),
+              );
+            },
+          } satisfies Command,
+        ]
+      : []),
+    {
+      label: "Toggle sidebar",
+      hint: "⌘\\",
+      icon: <PanelLeft size={14} />,
+      run: () => {
+        close();
+        useStore.getState().toggleSidebar();
       },
     },
     {
