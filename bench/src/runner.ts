@@ -21,6 +21,7 @@ import {
   buildTitle,
   PROMPT_VERSION,
 } from "./prompts.ts";
+import { renderHtmlReport } from "./html-report.ts";
 import { chat, estimateCostUsd } from "./providers.ts";
 import { renderReport } from "./report.ts";
 import {
@@ -292,7 +293,18 @@ writeFileSync(
 const md = renderReport(records, { promptVersion: PROMPT_VERSION });
 const mdPath = jsonPath.replace(/\.json$/, ".md");
 writeFileSync(mdPath, md);
+const htmlPath = jsonPath.replace(/\.json$/, ".html");
+writeFileSync(
+  htmlPath,
+  renderHtmlReport(records, {
+    promptVersion: PROMPT_VERSION,
+    judge: args.judge ? judgeModel : null,
+    source: path.basename(jsonPath),
+    today: config.today,
+  }),
+);
 
 console.log("\n" + md);
 console.log(`Results: ${jsonPath}`);
 console.log(`Report:  ${mdPath}`);
+console.log(`HTML:    ${htmlPath}`);

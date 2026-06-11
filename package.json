@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "bench": "node bench/src/runner.ts",
-    "bench:report": "node bench/src/report.ts"
+    "bench:report": "node bench/src/report.ts",
+    "bench:html": "node bench/src/html-report.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

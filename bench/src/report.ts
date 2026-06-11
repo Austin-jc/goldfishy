@@ -33,7 +33,7 @@ const fmt = {
   cost: (v?: number) => (v == null ? "—" : `$${v.toFixed(4)}`),
 };
 
-interface Agg {
+export interface Agg {
   runs: number;
   errors: number;
   validity?: number;
@@ -46,7 +46,7 @@ interface Agg {
   costPerRun?: number;
 }
 
-function aggregate(records: RunRecord[]): Agg {
+export function aggregate(records: RunRecord[]): Agg {
   const done = records.filter((r) => r.ok);
   return {
     runs: records.length,

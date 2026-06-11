@@ -10,6 +10,36 @@
       "model": "qwen3:4b-instruct-2507-q4_K_M"
     },
     {
+      "name": "ollama-qwen2.5-3b",
+      "provider": "openai-compat",
+      "baseUrl": "http://localhost:11434",
+      "model": "qwen2.5:3b"
+    },
+    {
+      "name": "ollama-llama3.2-3b",
+      "provider": "openai-compat",
+      "baseUrl": "http://localhost:11434",
+      "model": "llama3.2:3b"
+    },
+    {
+      "name": "ollama-gemma3-4b",
+      "provider": "openai-compat",
+      "baseUrl": "http://localhost:11434",
+      "model": "gemma3:4b"
+    },
+    {
+      "name": "ollama-phi4-mini",
+      "provider": "openai-compat",
+      "baseUrl": "http://localhost:11434",
+      "model": "phi4-mini"
+    },
+    {
+      "name": "ollama-qwen2.5-1.5b-q8",
+      "provider": "openai-compat",
+      "baseUrl": "http://localhost:11434",
+      "model": "qwen2.5:1.5b-instruct-q8_0"
+    },
+    {
       "name": "claude-haiku-4-5",
       "provider": "anthropic",
       "model": "claude-haiku-4-5"

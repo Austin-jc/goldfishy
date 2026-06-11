@@ -14,6 +14,16 @@
       "id": "websocket-leak-debug",
       "content": "spent the evening chasing the memory leak in the websocket relay. RSS climbs ~30MB/hour under steady load. heaptrack points at the per-connection broadcast buffers — we clone the payload bytes for every subscriber instead of sharing one allocation. tried switching to a shared Arc buffer and the growth flattened. still need to confirm the tokio task count isn't also creeping; tokio-console shows 4 orphaned tasks after reconnect storms. plan: land the Arc change, add a connection-close drop guard, rerun the 12h soak test.",
       "mustMentionAny": ["memory leak", "websocket", "leak"]
+    },
+    {
+      "id": "title-flaky-ci",
+      "content": "finally pinned the flaky checkout test. git bisect across 40 commits landed on the parallel artifact upload change — the test only fails when two runners write the cache key at the same time. repro: run the integration suite with -j4 and a cold cache, fails about 1 in 5. fix options: lock the cache key per branch, or switch to content-addressed keys. going with content-addressed, it also kills the whole stale-cache class of bugs. need to revert the bisect helper branch and write up the postmortem for the platform channel.",
+      "mustMentionAny": ["flaky", "bisect", "cache", "ci", "test"]
+    },
+    {
+      "id": "title-one-liner",
+      "content": "renew passport before november — expires nov 14, appointments take 3 weeks to get",
+      "mustMentionAny": ["passport"]
     }
   ],
   "tags": [
@@ -49,6 +59,28 @@
       "suggestFolders": true,
       "acceptableTags": ["travel", "japan", "kyoto", "trip", "vacation"],
       "expectedFolder": "Travel"
+    },
+    {
+      "id": "tags-sprint-retro",
+      "title": "Sprint 42 retro",
+      "content": "retro for sprint 42. went well: the new review rotation cut PR wait time from 2 days to 4 hours, everyone wants to keep it. went badly: two incidents from the same feature-flag misconfiguration — action: add a lint rule for flag defaults. velocity dipped because of the conference week, expected. kudos to mei for the oncall handover doc. next sprint: trial mob-programming fridays, revisit at the week 2 checkin.",
+      "folders": ["Work", "Cooking", "Travel", "Health", "Projects"],
+      "existingTags": ["rust", "recipes", "travel", "meetings", "fitness", "budget", "reading", "javascript"],
+      "maxTags": 2,
+      "suggestFolders": true,
+      "acceptableTags": ["meetings", "retro", "retrospective", "sprint", "agile", "work", "team"],
+      "expectedFolder": "Work"
+    },
+    {
+      "id": "tags-quotes-untitled",
+      "title": "",
+      "content": "quotes I keep coming back to — 'the impediment to action advances action. what stands in the way becomes the way' (marcus aurelius). 'a designer knows he has achieved perfection not when there is nothing left to add, but when there is nothing left to take away' (saint-exupéry). 'make it work, make it right, make it fast' (kent beck). want a nicer way to resurface these than scrolling — maybe a random quote on the new-note screen someday.",
+      "folders": ["Work", "Cooking", "Travel", "Health", "Projects"],
+      "existingTags": ["rust", "recipes", "travel", "meetings", "fitness", "budget", "reading", "javascript"],
+      "maxTags": 2,
+      "suggestFolders": true,
+      "acceptableTags": ["quotes", "inspiration", "philosophy", "wisdom", "reading", "writing"],
+      "expectedFolder": null
     }
   ],
   "actions": [
@@ -81,6 +113,26 @@
       "mustInclude": ["contractor", "tile", "permit"],
       "mustExclude": [],
       "expectedDues": ["2026-06-26"]
+    },
+    {
+      "id": "actions-relative-dates",
+      "title": "Week plan",
+      "content": "monday was a wash. tomorrow: send the revised proposal to klaus before his 10am — flag the new pricing section. friday is the last day to claim the conference travel refund, do it in the portal. the library books are due june 20. someday: digitize the old family photos box. already booked the car service for the 15th, that's handled.",
+      "categories": ["work", "errands", "health"],
+      "expectedCount": [3, 4],
+      "mustInclude": ["proposal", "refund", "library"],
+      "mustExclude": ["car service"],
+      "expectedDues": ["2026-06-11", "2026-06-12", "2026-06-20"]
+    },
+    {
+      "id": "actions-overload-cap",
+      "title": "Move-out checklist braindump",
+      "content": "lease ends june 30. need to: book the moving van, transfer the electricity account, set up mail forwarding at the post office, return the modem to the ISP shop, patch the nail holes in the bedroom, deep-clean the oven, defrost the freezer the night before the move, and cancel the parking permit before june 30. also update the address on my license within 30 days of moving. landlord already has the new keys ordered, not my problem.",
+      "categories": ["work", "errands", "health"],
+      "expectedCount": [5, 6],
+      "mustInclude": ["van"],
+      "mustExclude": ["keys"],
+      "expectedDues": ["2026-06-30"]
     }
   ],
   "bulletify": [
@@ -93,6 +145,11 @@
       "id": "bullets-ssg",
       "content": "static site generator research for the docs revamp. astro (https://astro.build) — islands architecture, ships zero js by default, md/mdx first class, build got slow on the 2k-page test but the content collections api is lovely. eleventy (https://www.11ty.dev) — fastest builds of everything tried, 2k pages in under 4 seconds, very flexible templating but you assemble everything yourself, no built-in image pipeline. also glanced at hugo: insanely fast but the go templating made everyone sad last time. current lean: eleventy for raw speed, astro if we want interactive examples embedded in the docs. decision needed before the offsite.",
       "mustKeep": ["https://astro.build", "https://www.11ty.dev", "eleventy", "astro", "hugo"]
+    },
+    {
+      "id": "bullets-incident",
+      "content": "postmortem scratch for the tuesday outage. tl;dr the rate limiter fell over at 09:14 when the token bucket refill job stopped after a redis failover, everything 429'd for 11 minutes. timeline: 09:03 redis primary failover (planned maintenance), 09:14 refill job dead — it held a stale connection and never retried. alarms only fired at 09:18, too slow — the threshold counts 5xx only and 429 isn't in it. manual restart 09:25, recovery immediate. fixes: add reconnect-with-backoff to the refill worker (`RefillWorker.run` in limiter/worker.py), count 429s in the alarm threshold, and write a runbook entry for token bucket drain. customer impact: 38k requests rejected, three support tickets. follow up with the SRE rotation about making redis failovers announce in #eng-infra.",
+      "mustKeep": ["RefillWorker.run", "limiter/worker.py", "09:14", "429", "38k"]
     }
   ],
   "merge": [
@@ -109,6 +166,24 @@
         }
       ],
       "mustKeep": ["https://example.com/jr-pass", "ghibli", "teamlab", "kamakura", "passport", "pocket wifi"]
+    },
+    {
+      "id": "merge-job-search",
+      "notes": [
+        {
+          "title": "Job search tracker",
+          "content": "applied: lumen labs (platform eng, referral from dev), arcwave (senior backend). recruiter screen with lumen done — went well, take-home next, due within a week of receiving. arcwave hasn't replied in 9 days, nudge them monday. comp research sheet: https://example.com/comp-sheet"
+        },
+        {
+          "title": "interview prep",
+          "content": "topics to brush up: consistent hashing, idempotency keys, postgres MVCC and vacuum, and the march outage story (good STAR answer). do two mock interviews — paula offered. lumen's take-home is in go, skim effective go again."
+        },
+        {
+          "title": "",
+          "content": "lumen labs take-home arrived!! due friday. parser + rate limiter service, readme says 4 hours max. ask whether tests count toward the cap. also arcwave finally replied — phone screen thursday 2pm with their eng manager sofia."
+        }
+      ],
+      "mustKeep": ["https://example.com/comp-sheet", "lumen", "arcwave", "take-home", "sofia", "consistent hashing"]
     }
   ],
   "summary": [
@@ -141,6 +216,32 @@
         }
       ],
       "mustMentionAny": ["kitchen", "renovation", "budget", "contractor", "permit", "corvo"]
+    },
+    {
+      "id": "summary-conference-talk",
+      "notes": [
+        {
+          "title": "Talk abstract",
+          "content": "talk accepted at devsummit: 'boring by design — shipping a local-first notes app'. 25 min + 5 q&a. abstract promises: the sync model, conflict handling, and why we skipped CRDTs."
+        },
+        {
+          "title": "Outline v2",
+          "content": "hook: the demo where the wifi dies live. section 1 local-first architecture 6 min, section 2 sync + conflicts 8 min, section 3 what broke in production 8 min. close on the three-rules slide. cut the embeddings tangent, it derails q&a."
+        },
+        {
+          "title": "Demo plan",
+          "content": "record a backup screencast in case conference wifi is bad. live demo: create a note offline, edit the same note on two devices, show the merge. reset script ready: scripts/demo-reset.sh"
+        },
+        {
+          "title": "Logistics",
+          "content": "flight thursday 7am, talk friday 11:30 in room B. speaker dinner thursday 8pm. slides due to the organizers wednesday. bring the hdmi dongle this time."
+        },
+        {
+          "title": "Slide feedback",
+          "content": "dry run with the team: pacing too fast in section 2, add the failure-modes diagram, drop two of the five architecture slides. mei suggests ending on the user quote instead of the rules slide — undecided."
+        }
+      ],
+      "mustMentionAny": ["talk", "devsummit", "demo", "slides", "sync", "conference", "local-first"]
     }
   ]
 }
