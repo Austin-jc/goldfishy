@@ -44,7 +44,7 @@ src-tauri/src/                # backend
 
 **Embedder lifecycle**: model (all-MiniLM-L6-v2, ~80MB) warms up eagerly at launch via `spawn_blocking` in `lib.rs`. Phase lives in an **atomic** (`state.rs::embedder_phase`: cold/downloading/loading/ready/error) so status reads never touch the embedder mutex — that mutex is held for whole embed batches. Init is single-flight via `embedder_init` mutex.
 
-**⚠ Tauri main-thread rule**: synchronous `#[tauri::command] fn`s run on the **main/UI thread**. Anything that could wait on a contended lock must be `async fn` (runs on the runtime pool). This was the cause of the original "unresponsive on start" bug. `queue_status` and all action-item commands are async for this reason.
+**⚠ Tauri main-thread rule**: synchronous `#[tauri::command] fn`s run on the **main/UI thread**. Anything that could wait on a contended lock must be `async fn` (runs on the runtime pool). This was the cause of the original "unresponsive on start" bug. Every command that takes the db lock is async now; file-IO-heavy ones (`export_notes`, `backup_now`, `save_image*`) additionally run on `spawn_blocking`. The only sync commands left are the trivially cheap, lock-free `notify_activity` and `get_data_dir`.
 
 **LLM layer** (`ai.rs::chat`): OpenAI-compatible `/v1/chat/completions` against `external` (Ollama/LM Studio) or `sidecar` (managed llama-server child process, health-polled, killed on exit/config change). Optional `response_format` param passes a strict `json_schema` for constrained decoding; servers that ignore it fall back to prompt + `extract_json` (which only finds `{...}` objects — always ask for an object, not a bare array). `num_ctx: 8192` is sent for Ollama; sidecar gets `-c 8192`.
 

@@ -33,7 +33,7 @@ fn touch_activity(app: &AppHandle) {
 // ---------------------------------------------------------------- notes
 
 #[tauri::command]
-pub fn create_note(app: AppHandle, folder_id: Option<String>) -> CmdResult<Note> {
+pub async fn create_note(app: AppHandle, folder_id: Option<String>) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let id = Uuid::new_v4().to_string();
@@ -51,14 +51,14 @@ pub fn create_note(app: AppHandle, folder_id: Option<String>) -> CmdResult<Note>
 }
 
 #[tauri::command]
-pub fn get_note(app: AppHandle, id: String) -> CmdResult<Note> {
+pub async fn get_note(app: AppHandle, id: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db::get_note(&db, &id).map_err(eanyhow)
 }
 
 #[tauri::command]
-pub fn update_note(app: AppHandle, id: String, title: String, content: String) -> CmdResult<Note> {
+pub async fn update_note(app: AppHandle, id: String, title: String, content: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let old = db::get_note(&db, &id).map_err(eanyhow)?;
@@ -101,7 +101,7 @@ pub fn update_note(app: AppHandle, id: String, title: String, content: String) -
 
 /// Soft delete: the note moves to Trash and drops out of every list/query.
 #[tauri::command]
-pub fn delete_note(app: AppHandle, id: String) -> CmdResult<()> {
+pub async fn delete_note(app: AppHandle, id: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -113,7 +113,7 @@ pub fn delete_note(app: AppHandle, id: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn restore_note(app: AppHandle, id: String) -> CmdResult<Note> {
+pub async fn restore_note(app: AppHandle, id: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute("UPDATE notes SET deleted_at = NULL WHERE id = ?1", params![id])
@@ -123,7 +123,7 @@ pub fn restore_note(app: AppHandle, id: String) -> CmdResult<Note> {
 
 /// Permanently delete one trashed note.
 #[tauri::command]
-pub fn purge_note(app: AppHandle, id: String) -> CmdResult<()> {
+pub async fn purge_note(app: AppHandle, id: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -136,7 +136,7 @@ pub fn purge_note(app: AppHandle, id: String) -> CmdResult<()> {
 
 /// Permanently delete everything in the trash; returns how many were purged.
 #[tauri::command]
-pub fn empty_trash(app: AppHandle) -> CmdResult<i64> {
+pub async fn empty_trash(app: AppHandle) -> CmdResult<i64> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let n = db
@@ -146,14 +146,14 @@ pub fn empty_trash(app: AppHandle) -> CmdResult<i64> {
 }
 
 #[tauri::command]
-pub fn list_trashed_notes(app: AppHandle) -> CmdResult<Vec<Note>> {
+pub async fn list_trashed_notes(app: AppHandle) -> CmdResult<Vec<Note>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db::list_trashed(&db).map_err(eanyhow)
 }
 
 #[tauri::command]
-pub fn move_note(app: AppHandle, id: String, folder_id: Option<String>) -> CmdResult<Note> {
+pub async fn move_note(app: AppHandle, id: String, folder_id: Option<String>) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -165,7 +165,7 @@ pub fn move_note(app: AppHandle, id: String, folder_id: Option<String>) -> CmdRe
 }
 
 #[tauri::command]
-pub fn set_note_pinned(app: AppHandle, id: String, pinned: bool) -> CmdResult<Note> {
+pub async fn set_note_pinned(app: AppHandle, id: String, pinned: bool) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -177,7 +177,7 @@ pub fn set_note_pinned(app: AppHandle, id: String, pinned: bool) -> CmdResult<No
 }
 
 #[tauri::command]
-pub fn add_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> {
+pub async fn add_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> {
     let tag = tag.trim().to_lowercase().replace(char::is_whitespace, "-");
     if tag.is_empty() {
         return Err("Tag is empty".into());
@@ -194,7 +194,7 @@ pub fn add_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> 
 }
 
 #[tauri::command]
-pub fn remove_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> {
+pub async fn remove_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -206,7 +206,7 @@ pub fn remove_tag(app: AppHandle, note_id: String, tag: String) -> CmdResult<Not
 }
 
 #[tauri::command]
-pub fn accept_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<Note> {
+pub async fn accept_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -219,7 +219,7 @@ pub fn accept_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<No
 }
 
 #[tauri::command]
-pub fn dismiss_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<Note> {
+pub async fn dismiss_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute(
@@ -231,7 +231,7 @@ pub fn dismiss_folder_suggestion(app: AppHandle, note_id: String) -> CmdResult<N
 }
 
 #[tauri::command]
-pub fn list_notes(
+pub async fn list_notes(
     app: AppHandle,
     folder_id: Option<String>,
     tags: Option<Vec<String>>,
@@ -579,14 +579,14 @@ pub async fn merge_notes(app: AppHandle, note_ids: Vec<String>) -> CmdResult<Not
 // ---------------------------------------------------------------- folders & tags
 
 #[tauri::command]
-pub fn list_folders(app: AppHandle) -> CmdResult<Vec<Folder>> {
+pub async fn list_folders(app: AppHandle) -> CmdResult<Vec<Folder>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db::list_folders(&db).map_err(eanyhow)
 }
 
 #[tauri::command]
-pub fn create_folder(app: AppHandle, name: String, parent_id: Option<String>) -> CmdResult<Folder> {
+pub async fn create_folder(app: AppHandle, name: String, parent_id: Option<String>) -> CmdResult<Folder> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("Folder name is empty".into());
@@ -605,7 +605,7 @@ pub fn create_folder(app: AppHandle, name: String, parent_id: Option<String>) ->
 
 /// Re-parent a folder (None = root). Refuses moves into the folder's own subtree.
 #[tauri::command]
-pub fn move_folder(app: AppHandle, id: String, parent_id: Option<String>) -> CmdResult<()> {
+pub async fn move_folder(app: AppHandle, id: String, parent_id: Option<String>) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     if let Some(pid) = &parent_id {
@@ -623,7 +623,7 @@ pub fn move_folder(app: AppHandle, id: String, parent_id: Option<String>) -> Cmd
 }
 
 #[tauri::command]
-pub fn rename_folder(app: AppHandle, id: String, name: String) -> CmdResult<()> {
+pub async fn rename_folder(app: AppHandle, id: String, name: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name.trim(), id])
@@ -632,7 +632,7 @@ pub fn rename_folder(app: AppHandle, id: String, name: String) -> CmdResult<()> 
 }
 
 #[tauri::command]
-pub fn delete_folder(app: AppHandle, id: String) -> CmdResult<()> {
+pub async fn delete_folder(app: AppHandle, id: String) -> CmdResult<()> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db.execute("DELETE FROM folders WHERE id = ?1", params![id])
@@ -641,7 +641,7 @@ pub fn delete_folder(app: AppHandle, id: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn list_tags(app: AppHandle) -> CmdResult<Vec<TagCount>> {
+pub async fn list_tags(app: AppHandle) -> CmdResult<Vec<TagCount>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db::list_tags(&db).map_err(eanyhow)
@@ -831,7 +831,7 @@ pub struct CollectionSummary {
 }
 
 #[tauri::command]
-pub fn get_collection_summary(app: AppHandle, kind: String, key: String) -> CmdResult<Option<CollectionSummary>> {
+pub async fn get_collection_summary(app: AppHandle, kind: String, key: String) -> CmdResult<Option<CollectionSummary>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     let row = db
@@ -974,7 +974,7 @@ pub async fn delete_action_item(app: AppHandle, id: String) -> CmdResult<()> {
 // ---------------------------------------------------------------- settings & system
 
 #[tauri::command]
-pub fn get_settings(app: AppHandle) -> CmdResult<AppSettings> {
+pub async fn get_settings(app: AppHandle) -> CmdResult<AppSettings> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     Ok(db::load_settings(&db))
@@ -999,7 +999,7 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> CmdResult<()
 }
 
 #[tauri::command]
-pub fn reindex_all(app: AppHandle) -> CmdResult<QueueStatus> {
+pub async fn reindex_all(app: AppHandle) -> CmdResult<QueueStatus> {
     let state = app.state::<AppState>();
     {
         let db = state.db.lock().unwrap();
@@ -1086,22 +1086,26 @@ pub fn get_data_dir(app: AppHandle) -> CmdResult<String> {
 }
 
 #[tauri::command]
-pub fn save_image(app: AppHandle, src_path: String) -> CmdResult<String> {
-    let src = PathBuf::from(&src_path);
-    if !src.is_file() {
-        return Err(format!("Not a file: {src_path}"));
-    }
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .filter(|e| ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"].contains(&e.as_str()))
-        .ok_or_else(|| "Unsupported image type".to_string())?;
-    let name = format!("{}.{ext}", Uuid::new_v4());
-    let dir = app.path().app_data_dir().map_err(estr)?.join("images");
-    std::fs::create_dir_all(&dir).map_err(estr)?;
-    std::fs::copy(&src, dir.join(&name)).map_err(estr)?;
-    Ok(format!("images/{name}"))
+pub async fn save_image(app: AppHandle, src_path: String) -> CmdResult<String> {
+    tauri::async_runtime::spawn_blocking(move || -> CmdResult<String> {
+        let src = PathBuf::from(&src_path);
+        if !src.is_file() {
+            return Err(format!("Not a file: {src_path}"));
+        }
+        let ext = src
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .filter(|e| ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"].contains(&e.as_str()))
+            .ok_or_else(|| "Unsupported image type".to_string())?;
+        let name = format!("{}.{ext}", Uuid::new_v4());
+        let dir = app.path().app_data_dir().map_err(estr)?.join("images");
+        std::fs::create_dir_all(&dir).map_err(estr)?;
+        std::fs::copy(&src, dir.join(&name)).map_err(estr)?;
+        Ok(format!("images/{name}"))
+    })
+    .await
+    .map_err(estr)?
 }
 
 // ---------------------------------------------------------------- versions
@@ -1162,25 +1166,31 @@ pub async fn restore_note_version(app: AppHandle, version_id: String) -> CmdResu
     Ok(note)
 }
 
-/// Save pasted image data (base64) into app storage; returns the relative path.
+/// Save pasted image data (base64) into app storage; returns the relative
+/// path. Decoding + writing happen on the blocking pool — pasted screenshots
+/// can be multi-MB.
 #[tauri::command]
-pub fn save_image_bytes(app: AppHandle, data_base64: String, ext: String) -> CmdResult<String> {
-    use base64::Engine;
-    let ext = ext.to_lowercase();
-    if !["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"].contains(&ext.as_str()) {
-        return Err("Unsupported image type".into());
-    }
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data_base64.as_bytes())
-        .map_err(estr)?;
-    if bytes.is_empty() {
-        return Err("Empty image data".into());
-    }
-    let name = format!("{}.{ext}", Uuid::new_v4());
-    let dir = app.path().app_data_dir().map_err(estr)?.join("images");
-    std::fs::create_dir_all(&dir).map_err(estr)?;
-    std::fs::write(dir.join(&name), &bytes).map_err(estr)?;
-    Ok(format!("images/{name}"))
+pub async fn save_image_bytes(app: AppHandle, data_base64: String, ext: String) -> CmdResult<String> {
+    tauri::async_runtime::spawn_blocking(move || -> CmdResult<String> {
+        use base64::Engine;
+        let ext = ext.to_lowercase();
+        if !["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"].contains(&ext.as_str()) {
+            return Err("Unsupported image type".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data_base64.as_bytes())
+            .map_err(estr)?;
+        if bytes.is_empty() {
+            return Err("Empty image data".into());
+        }
+        let name = format!("{}.{ext}", Uuid::new_v4());
+        let dir = app.path().app_data_dir().map_err(estr)?.join("images");
+        std::fs::create_dir_all(&dir).map_err(estr)?;
+        std::fs::write(dir.join(&name), &bytes).map_err(estr)?;
+        Ok(format!("images/{name}"))
+    })
+    .await
+    .map_err(estr)?
 }
 
 // ---------------------------------------------------------------- export
@@ -1212,8 +1222,10 @@ fn iso(ms: i64) -> String {
 }
 
 #[tauri::command]
-pub fn export_notes(app: AppHandle, dest: String, format: String) -> CmdResult<i64> {
-    export_notes_core(&app, PathBuf::from(dest), &format)
+pub async fn export_notes(app: AppHandle, dest: String, format: String) -> CmdResult<i64> {
+    tauri::async_runtime::spawn_blocking(move || export_notes_core(&app, PathBuf::from(dest), &format))
+        .await
+        .map_err(estr)?
 }
 
 #[derive(Serialize, Clone)]
@@ -1251,8 +1263,10 @@ pub fn run_backup(app: &AppHandle) -> Result<BackupResult, String> {
 }
 
 #[tauri::command]
-pub fn backup_now(app: AppHandle) -> CmdResult<BackupResult> {
-    run_backup(&app)
+pub async fn backup_now(app: AppHandle) -> CmdResult<BackupResult> {
+    tauri::async_runtime::spawn_blocking(move || run_backup(&app))
+        .await
+        .map_err(estr)?
 }
 
 pub fn export_notes_core(app: &AppHandle, dest: PathBuf, format: &str) -> CmdResult<i64> {
