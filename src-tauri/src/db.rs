@@ -136,6 +136,13 @@ pub fn ai_input(title: &str, content: &str) -> String {
 
 const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at";
 
+/// Same shape, but `content` trimmed server-side. List views only render short
+/// previews (≤220 chars after markdown stripping) and the editor loads full
+/// content via `get_note`, so list payloads/memory stay flat as notes grow.
+/// SQLite `substr` counts characters for TEXT, so this never splits a UTF-8
+/// code point.
+const NOTE_COLS_EXCERPT: &str = "id, title, substr(content, 1, 240) AS content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at";
+
 fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
     Ok(Note {
         id: row.get(0)?,
@@ -202,16 +209,20 @@ pub fn get_note(conn: &Connection, id: &str) -> Result<Note> {
     Ok(note)
 }
 
+/// `excerpt` returns trimmed content (NOTE_COLS_EXCERPT) — what the UI's list
+/// views want. Pass `false` where full content matters (export, summaries).
 pub fn list_notes(
     conn: &Connection,
     folder_id: Option<&str>,
     tags: Option<&[String]>,
+    excerpt: bool,
 ) -> Result<Vec<Note>> {
+    let cols = if excerpt { NOTE_COLS_EXCERPT } else { NOTE_COLS };
     let tags = tags.unwrap_or(&[]);
     let mut notes: Vec<Note> = match (folder_id, tags.is_empty()) {
         (Some(f), _) => {
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes
+                "SELECT {cols} FROM notes
                  WHERE folder_id = ?1 AND deleted_at IS NULL ORDER BY updated_at DESC"
             ))?;
             let rows = stmt.query_map(params![f], row_to_note)?;
@@ -221,7 +232,7 @@ pub fn list_notes(
             // Notes carrying ALL of the selected tags.
             let placeholders = vec!["?"; tags.len()].join(",");
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NULL AND id IN (
+                "SELECT {cols} FROM notes WHERE deleted_at IS NULL AND id IN (
                     SELECT note_id FROM note_tags WHERE tag IN ({placeholders})
                     GROUP BY note_id HAVING COUNT(DISTINCT tag) = {}
                  ) ORDER BY updated_at DESC",
@@ -232,7 +243,7 @@ pub fn list_notes(
         }
         (None, true) => {
             let mut stmt = conn.prepare(&format!(
-                "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC"
+                "SELECT {cols} FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC"
             ))?;
             let rows = stmt.query_map([], row_to_note)?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?

@@ -970,11 +970,13 @@ const PREVIEW_W = 264;
 async function duplicateNote(note: Note) {
   const st = useStore.getState();
   try {
-    const copy = await api.createNote(note.folder_id);
+    // Tree rows only carry a content excerpt — fetch the full note to copy.
+    const full = await api.getNote(note.id);
+    const copy = await api.createNote(full.folder_id);
     await api.updateNote(
       copy.id,
-      note.title ? `${note.title} (copy)` : "",
-      note.content,
+      full.title ? `${full.title} (copy)` : "",
+      full.content,
     );
     await st.refreshNotes();
     await st.selectNote(copy.id);

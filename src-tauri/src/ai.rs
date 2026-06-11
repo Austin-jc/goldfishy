@@ -621,20 +621,21 @@ pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Res
     let state = app.state::<AppState>();
     let notes = {
         let db = state.db.lock().unwrap();
+        // Full content — excerpts would gut the summaries.
         match kind {
             "folder" => {
                 let ids = db::folder_with_descendants(&db, key)?;
                 let mut all = Vec::new();
                 for fid in ids {
-                    all.extend(db::list_notes(&db, Some(&fid), None)?);
+                    all.extend(db::list_notes(&db, Some(&fid), None, false)?);
                 }
                 all
             }
             "tag" => {
                 let tags = vec![key.to_string()];
-                db::list_notes(&db, None, Some(&tags))?
+                db::list_notes(&db, None, Some(&tags), false)?
             }
-            _ => db::list_notes(&db, None, None)?,
+            _ => db::list_notes(&db, None, None, false)?,
         }
     };
     if notes.is_empty() {

@@ -8,6 +8,10 @@ export interface NoteTag {
 export interface Note {
   id: string;
   title: string;
+  /**
+   * Full Markdown from `get_note`/events; list_notes rows carry only a
+   * ~240-char excerpt — enough for previews, never edit/copy from it.
+   */
   content: string;
   folder_id: string | null;
   created_at: number;

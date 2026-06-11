@@ -117,9 +117,10 @@ export const useStore = create<Store>((set, get) => ({
       api.queueStatus(),
     ]);
     setDataDir(dir);
-    set({ settings, folders, tags, queue });
-    await get().refreshNotes();
-    set({ ready: true });
+    // First paint doesn't wait for the note list — the tree fills in as soon
+    // as refreshNotes resolves.
+    set({ settings, folders, tags, queue, ready: true });
+    void get().refreshNotes();
     void get().refreshActions();
     void get().refreshTrash();
   },

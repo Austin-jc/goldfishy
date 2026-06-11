@@ -230,6 +230,8 @@ pub async fn dismiss_folder_suggestion(app: AppHandle, note_id: String) -> CmdRe
     db::get_note(&db, &note_id).map_err(eanyhow)
 }
 
+/// List rows carry a content *excerpt* only — the editor loads the full note
+/// through `get_note`.
 #[tauri::command]
 pub async fn list_notes(
     app: AppHandle,
@@ -238,7 +240,7 @@ pub async fn list_notes(
 ) -> CmdResult<Vec<Note>> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    db::list_notes(&db, folder_id.as_deref(), tags.as_deref()).map_err(eanyhow)
+    db::list_notes(&db, folder_id.as_deref(), tags.as_deref(), true).map_err(eanyhow)
 }
 
 // ---------------------------------------------------------------- search
@@ -1277,7 +1279,8 @@ pub fn export_notes_core(app: &AppHandle, dest: PathBuf, format: &str) -> CmdRes
         let db = state.db.lock().unwrap();
         (
             db::list_folders(&db).map_err(eanyhow)?,
-            db::list_notes(&db, None, None).map_err(eanyhow)?,
+            // Full content — this is the export.
+            db::list_notes(&db, None, None, false).map_err(eanyhow)?,
         )
     };
 
