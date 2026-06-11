@@ -1,6 +1,6 @@
 # AI feature benchmark harness
 
-Benchmarks candidate LLMs on NexusNote's AI features — **title generation, auto-tagging + folder routing, action extraction, bulletify, note merging, and collection summaries** — using the app's *exact* prompts, token caps, JSON schemas, and reply parsing (ported 1:1 from `src-tauri/src/ai.rs` into `src/prompts.ts`). A model that scores well here will behave the same way inside the app.
+Benchmarks candidate LLMs on NexusNote's AI features — **title generation, auto-tagging + folder routing, action extraction, bulletify, note merging, and collection summaries** — using the app's *exact* prompts, token caps, JSON schemas, and reply parsing. Prompts/schemas/limits are loaded from the shared **`prompts/prompts.json`** (the same file the app embeds via `src-tauri/src/prompts.rs`), and its `version` is stamped into every results file; reply parsing is ported 1:1 from `ai.rs` into `src/prompts.ts`. A model that scores well here will behave the same way inside the app.
 
 ## What it measures
 

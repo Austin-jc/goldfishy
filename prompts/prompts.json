@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "_readme": "Single source of truth for every LLM prompt, JSON schema, token cap and truncation limit. Loaded by src-tauri/src/prompts.rs (include_str!) and bench/src/prompts.ts. {placeholders} are filled at call time; literal braces elsewhere are sent as-is. Bump `version` on ANY change here — it is stamped into bench results so scores are comparable.",
+  "title": {
+    "system": "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
+    "user": "Write a concise, descriptive title (3-8 words) for this note:\n\n{content}",
+    "max_tokens": 32,
+    "limits": { "content": 4000 }
+  },
+  "tag_route": {
+    "system": "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.",
+    "tag_instructions": "Suggest at most {max_tags} short lowercase topical tags (1-2 words each) — fewer is better, and an empty list is fine if nothing fits strongly. Tags must name the note's topic or domain (e.g. \"rust\", \"recipes\", \"travel\"). Reuse a tag from this existing vocabulary whenever one fits: {tags_json}. Never use status or filler words (done, todo, wip, note, notes, text, misc, stuff, idea, random), bare verbs, or words that merely appear in the note without describing it.",
+    "tag_instructions_off": "Return an empty tags list.",
+    "folder_instructions": "Also choose the single best destination folder for the note from this list: {folders_json}. Use null for the folder if none fits well or the list is empty.",
+    "folder_instructions_off": "Use null for the folder.",
+    "user": "{tag_instructions}\n{folder_instructions}\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}\n\nReply with JSON exactly like: {\"tags\": [\"tag1\"], \"folder\": \"folder name or null\"}",
+    "max_tokens": 250,
+    "limits": { "title": 200, "content": 6000 },
+    "schema_name": "note_meta",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "folder": { "type": ["string", "null"] }
+      },
+      "required": ["tags", "folder"],
+      "additionalProperties": false
+    }
+  },
+  "actions": {
+    "system": "You extract action items from personal notes. Reply with ONLY valid JSON. No prose, no markdown fences.",
+    "user": "Today is {today}. Extract up to 6 concrete action items (tasks, follow-ups, reminders) from the note below. Only include real actions the author still needs to do — not facts, ideas, or completed work. If there are none, return an empty list.\nFor each item give: \"text\" (short imperative phrase), \"category\" (one or two lowercase words; reuse one of {cats_json} when it fits, else invent a sensible one like \"work\", \"errands\", \"health\", \"follow-up\"), and \"due\" — \"YYYY-MM-DD\" or \"YYYY-MM-DD HH:MM\" if the note implies a date or deadline (resolve relative phrases like \"tomorrow\" or \"next friday\" using today's date), else null.\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}\n\nReply with JSON exactly like: {\"items\": [{\"text\": \"...\", \"category\": \"...\", \"due\": null}]}",
+    "max_tokens": 600,
+    "limits": { "title": 200, "content": 8000 },
+    "schema_name": "action_items",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "category": { "type": "string" },
+              "due": { "type": ["string", "null"] }
+            },
+            "required": ["text", "category", "due"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["items"],
+      "additionalProperties": false
+    }
+  },
+  "bulletify": {
+    "system": "You restructure messy notes into clean markdown. Reply with ONLY the restructured markdown — no preamble, no explanation.",
+    "user": "Rewrite the following stream-of-consciousness note as concise markdown bullet points. Group related points under short bold headings where it helps. Preserve every distinct piece of information, all links and image references.\n\n{content}",
+    "max_tokens": 2048,
+    "limits": { "content": 12000 }
+  },
+  "merge": {
+    "system": "You merge overlapping personal notes into one well-organized markdown note. Reply with ONLY the merged markdown — no preamble.",
+    "note_block": "### {title}\n{content}\n\n",
+    "user": "Merge these {count} overlapping notes into a single coherent markdown note. Preserve every distinct fact, link, image reference and task. Remove duplicated information. Organize with short headings where it helps.\n\n{corpus}",
+    "max_tokens": 3072,
+    "limits": { "note_content": 6000, "corpus": 24000 }
+  },
+  "summary": {
+    "system": "You summarize collections of personal notes. Reply with ONLY the summary paragraph — no heading, no preamble.",
+    "note_block": "## {title}\n{content}\n\n",
+    "user": "Write one concise paragraph (4-6 sentences) that synthesizes the key themes, facts, decisions and open items across this collection of {count} notes:\n\n{corpus}",
+    "max_tokens": 500,
+    "limits": { "note_content": 1200, "corpus": 16000, "max_notes": 40 }
+  }
+}

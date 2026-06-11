@@ -1,10 +1,64 @@
-// Ports of the prompt construction and reply parsing in src-tauri/src/ai.rs.
-// Kept byte-identical to the app so the benchmark measures exactly what the
-// app would send and store. If you change a prompt in ai.rs, change it here.
+// Prompt construction and reply parsing for the benchmark. Prompt text,
+// schemas, token caps and truncation limits all come from prompts/prompts.json
+// — the same file src-tauri/src/prompts.rs embeds — so the benchmark measures
+// exactly what the app sends. Reply *parsing* below is still a 1:1 port of the
+// normalization in ai.rs; keep those helpers in sync if ai.rs parsing changes.
 
+import { readFileSync } from "node:fs";
 import type { BuiltRequest, NoteInput } from "./types.ts";
 
-// ---- helpers (ai.rs:22-68) ----
+interface PromptTask {
+  system: string;
+  user: string;
+  max_tokens: number;
+  limits?: Record<string, number>;
+  schema?: Record<string, unknown>;
+  schema_name?: string;
+  /** Conditional fragments (tag_route) and corpus row templates (merge/summary). */
+  [extra: string]: unknown;
+}
+
+const PROMPTS = JSON.parse(
+  readFileSync(new URL("../../prompts/prompts.json", import.meta.url), "utf8"),
+) as { version: number } & Record<string, PromptTask>;
+
+/** Stamped into bench results so scores stay comparable across prompt edits. */
+export const PROMPT_VERSION: number = PROMPTS.version;
+
+function task(name: string): PromptTask {
+  const t = PROMPTS[name];
+  if (!t || typeof t !== "object") throw new Error(`prompts.json: missing task '${name}'`);
+  return t;
+}
+
+function text(taskName: string, field: string): string {
+  const v = task(taskName)[field];
+  if (typeof v !== "string") {
+    throw new Error(`prompts.json: ${taskName}.${field} must be a string`);
+  }
+  return v;
+}
+
+function limit(taskName: string, name: string): number {
+  const v = task(taskName).limits?.[name];
+  if (typeof v !== "number") {
+    throw new Error(`prompts.json: ${taskName}.limits.${name} must be a number`);
+  }
+  return v;
+}
+
+/**
+ * Replace `{key}` placeholders in one pass (substituted values are never
+ * re-scanned). Unknown `{...}` sequences — like the literal JSON examples in
+ * the prompts — pass through untouched. Mirrors prompts.rs::fill.
+ */
+export function fill(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{([a-z_]+)\}/g, (m, k: string) =>
+    Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m,
+  );
+}
+
+// ---- helpers: 1:1 ports of the parsing/normalization in ai.rs ----
 
 export function truncateChars(s: string, max: number): string {
   const chars = Array.from(s);
@@ -89,14 +143,15 @@ export function weekdayName(isoDate: string): string {
   });
 }
 
-// ---- auto-title (ai.rs:608-648) ----
+// ---- auto-title ----
 
 export function buildTitle(content: string): BuiltRequest {
   return {
-    system:
-      "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
-    user: `Write a concise, descriptive title (3-8 words) for this note:\n\n${truncateChars(content, 4000)}`,
-    maxTokens: 32,
+    system: text("title", "system"),
+    user: fill(text("title", "user"), {
+      content: truncateChars(content, limit("title", "content")),
+    }),
+    maxTokens: task("title").max_tokens,
   };
 }
 
@@ -112,7 +167,7 @@ export function parseTitleReply(reply: string): string {
   return Array.from(t).slice(0, 80).join("");
 }
 
-// ---- auto-tag & folder routing (ai.rs:238-312) ----
+// ---- auto-tag & folder routing ----
 
 export interface TagRouteInput {
   title: string;
@@ -124,34 +179,33 @@ export interface TagRouteInput {
 }
 
 export function buildTagRoute(opts: TagRouteInput): BuiltRequest {
-  const tagsJson = JSON.stringify(opts.existingTags);
-  const foldersJson = JSON.stringify(opts.folders);
   const tagInstructions =
     opts.maxTags === 0
-      ? "Return an empty tags list."
-      : `Suggest at most ${opts.maxTags} short lowercase topical tags (1-2 words each) — fewer is better, and an empty list is fine if nothing fits strongly. Tags must name the note's topic or domain (e.g. "rust", "recipes", "travel"). Reuse a tag from this existing vocabulary whenever one fits: ${tagsJson}. Never use status or filler words (done, todo, wip, note, notes, text, misc, stuff, idea, random), bare verbs, or words that merely appear in the note without describing it.`;
+      ? text("tag_route", "tag_instructions_off")
+      : fill(text("tag_route", "tag_instructions"), {
+          max_tags: String(opts.maxTags),
+          tags_json: JSON.stringify(opts.existingTags),
+        });
   const folderInstructions = opts.suggestFolders
-    ? `Also choose the single best destination folder for the note from this list: ${foldersJson}. Use null for the folder if none fits well or the list is empty.`
-    : "Use null for the folder.";
+    ? fill(text("tag_route", "folder_instructions"), {
+        folders_json: JSON.stringify(opts.folders),
+      })
+    : text("tag_route", "folder_instructions_off");
   return {
-    system:
-      "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.",
-    user: `${tagInstructions}\n${folderInstructions}\n\nNOTE TITLE: ${truncateChars(opts.title, 200)}\nNOTE CONTENT:\n${truncateChars(opts.content, 6000)}\n\nReply with JSON exactly like: {"tags": ["tag1"], "folder": "folder name or null"}`,
-    maxTokens: 250,
-    schemaName: "note_meta",
-    schema: {
-      type: "object",
-      properties: {
-        tags: { type: "array", items: { type: "string" } },
-        folder: { type: ["string", "null"] },
-      },
-      required: ["tags", "folder"],
-      additionalProperties: false,
-    },
+    system: text("tag_route", "system"),
+    user: fill(text("tag_route", "user"), {
+      tag_instructions: tagInstructions,
+      folder_instructions: folderInstructions,
+      title: truncateChars(opts.title, limit("tag_route", "title")),
+      content: truncateChars(opts.content, limit("tag_route", "content")),
+    }),
+    maxTokens: task("tag_route").max_tokens,
+    schemaName: task("tag_route").schema_name,
+    schema: task("tag_route").schema,
   };
 }
 
-// ---- action extraction (ai.rs:410-470) ----
+// ---- action extraction ----
 
 export interface ActionsInput {
   title: string;
@@ -162,76 +216,64 @@ export interface ActionsInput {
 }
 
 export function buildActions(opts: ActionsInput): BuiltRequest {
-  const today = `${opts.today} (${weekdayName(opts.today)})`;
-  const catsJson = JSON.stringify(opts.categories);
   return {
-    system:
-      "You extract action items from personal notes. Reply with ONLY valid JSON. No prose, no markdown fences.",
-    user: `Today is ${today}. Extract up to 6 concrete action items (tasks, follow-ups, reminders) from the note below. Only include real actions the author still needs to do — not facts, ideas, or completed work. If there are none, return an empty list.\nFor each item give: "text" (short imperative phrase), "category" (one or two lowercase words; reuse one of ${catsJson} when it fits, else invent a sensible one like "work", "errands", "health", "follow-up"), and "due" — "YYYY-MM-DD" or "YYYY-MM-DD HH:MM" if the note implies a date or deadline (resolve relative phrases like "tomorrow" or "next friday" using today's date), else null.\n\nNOTE TITLE: ${truncateChars(opts.title, 200)}\nNOTE CONTENT:\n${truncateChars(opts.content, 8000)}\n\nReply with JSON exactly like: {"items": [{"text": "...", "category": "...", "due": null}]}`,
-    maxTokens: 600,
-    schemaName: "action_items",
-    schema: {
-      type: "object",
-      properties: {
-        items: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              text: { type: "string" },
-              category: { type: "string" },
-              due: { type: ["string", "null"] },
-            },
-            required: ["text", "category", "due"],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["items"],
-      additionalProperties: false,
-    },
+    system: text("actions", "system"),
+    user: fill(text("actions", "user"), {
+      today: `${opts.today} (${weekdayName(opts.today)})`,
+      cats_json: JSON.stringify(opts.categories),
+      title: truncateChars(opts.title, limit("actions", "title")),
+      content: truncateChars(opts.content, limit("actions", "content")),
+    }),
+    maxTokens: task("actions").max_tokens,
+    schemaName: task("actions").schema_name,
+    schema: task("actions").schema,
   };
 }
 
-// ---- bulletify (ai.rs:542-560) ----
+// ---- bulletify ----
 
 export function buildBulletify(content: string): BuiltRequest {
   return {
-    system:
-      "You restructure messy notes into clean markdown. Reply with ONLY the restructured markdown — no preamble, no explanation.",
-    user: `Rewrite the following stream-of-consciousness note as concise markdown bullet points. Group related points under short bold headings where it helps. Preserve every distinct piece of information, all links and image references.\n\n${truncateChars(content, 12000)}`,
-    maxTokens: 2048,
+    system: text("bulletify", "system"),
+    user: fill(text("bulletify", "user"), {
+      content: truncateChars(content, limit("bulletify", "content")),
+    }),
+    maxTokens: task("bulletify").max_tokens,
   };
 }
 
-// ---- merge (ai.rs:579-598) ----
+// ---- merge ----
 
 export function buildMerge(notes: NoteInput[]): BuiltRequest {
   let corpus = "";
   for (const n of notes) {
-    corpus += `### ${n.title.trim() === "" ? "(untitled)" : n.title.trim()}\n${truncateChars(n.content, 6000)}\n\n`;
-    if (corpus.length > 24_000) break;
+    corpus += fill(text("merge", "note_block"), {
+      title: n.title.trim() === "" ? "(untitled)" : n.title.trim(),
+      content: truncateChars(n.content, limit("merge", "note_content")),
+    });
+    if (corpus.length > limit("merge", "corpus")) break;
   }
   return {
-    system:
-      "You merge overlapping personal notes into one well-organized markdown note. Reply with ONLY the merged markdown — no preamble.",
-    user: `Merge these ${notes.length} overlapping notes into a single coherent markdown note. Preserve every distinct fact, link, image reference and task. Remove duplicated information. Organize with short headings where it helps.\n\n${corpus}`,
-    maxTokens: 3072,
+    system: text("merge", "system"),
+    user: fill(text("merge", "user"), { count: String(notes.length), corpus }),
+    maxTokens: task("merge").max_tokens,
   };
 }
 
-// ---- collection summary (ai.rs:651-693) ----
+// ---- collection summary ----
 
 export function buildSummarize(notes: NoteInput[]): BuiltRequest {
   let corpus = "";
-  for (const n of notes.slice(0, 40)) {
-    corpus += `## ${n.title === "" ? "(untitled)" : n.title}\n${truncateChars(n.content, 1200)}\n\n`;
-    if (corpus.length > 16_000) break;
+  for (const n of notes.slice(0, limit("summary", "max_notes"))) {
+    corpus += fill(text("summary", "note_block"), {
+      title: n.title === "" ? "(untitled)" : n.title,
+      content: truncateChars(n.content, limit("summary", "note_content")),
+    });
+    if (corpus.length > limit("summary", "corpus")) break;
   }
   return {
-    system:
-      "You summarize collections of personal notes. Reply with ONLY the summary paragraph — no heading, no preamble.",
-    user: `Write one concise paragraph (4-6 sentences) that synthesizes the key themes, facts, decisions and open items across this collection of ${notes.length} notes:\n\n${corpus}`,
-    maxTokens: 500,
+    system: text("summary", "system"),
+    user: fill(text("summary", "user"), { count: String(notes.length), corpus }),
+    maxTokens: task("summary").max_tokens,
   };
 }

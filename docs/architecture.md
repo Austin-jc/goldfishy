@@ -96,4 +96,4 @@ The worker publishes a live `current_activity` label + note id into `QueueStatus
 - **Trash**: every query that reads notes filters `deleted_at IS NULL` — lists, both searches, related/similar, tag counts, action-item joins, queue picks, exports.
 - **Migrations are additive only** (`IF NOT EXISTS` + ignored `ALTER TABLE ADD COLUMN`).
 - **Versions**: snapshot before AI rewrites (bulletify, merge) and restores; pre-edit snapshot at most every 10 min.
-- **Bench mirror**: `bench/src/prompts.ts` is a 1:1 port of `ai.rs` prompts/schemas — change one, change both.
+- **Prompt single source**: `prompts/prompts.json` holds every prompt/schema/limit, embedded by `src-tauri/src/prompts.rs` and read by `bench/src/prompts.ts`; its `version` field is bumped on change and stamped into bench results. Reply-parsing code in `bench/src/prompts.ts` still mirrors `ai.rs` by hand.

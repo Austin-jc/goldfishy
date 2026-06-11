@@ -18,6 +18,7 @@ import {
   buildSummarize,
   buildTagRoute,
   buildTitle,
+  PROMPT_VERSION,
 } from "./prompts.ts";
 import { chat, estimateCostUsd } from "./providers.ts";
 import { renderReport } from "./report.ts";
@@ -201,6 +202,7 @@ if (args.dryRun) {
 
 console.log(
   `Benchmark: ${models.length} model(s) × ${cases.length} case(s) × ${runs} run(s)` +
+    ` · prompts v${PROMPT_VERSION}` +
     (args.judge ? ` + judge (${judgeModel})` : ""),
 );
 
@@ -261,14 +263,14 @@ writeFileSync(
   jsonPath,
   JSON.stringify(
     {
-      config: { today: config.today, runs, judge: args.judge ? judgeModel : null, models: models.map((m) => m.name) },
+      config: { promptVersion: PROMPT_VERSION, today: config.today, runs, judge: args.judge ? judgeModel : null, models: models.map((m) => m.name) },
       records,
     },
     null,
     2,
   ),
 );
-const md = renderReport(records);
+const md = renderReport(records, { promptVersion: PROMPT_VERSION });
 const mdPath = jsonPath.replace(/\.json$/, ".md");
 writeFileSync(mdPath, md);
 

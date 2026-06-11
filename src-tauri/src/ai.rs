@@ -11,6 +11,7 @@ use tokio::time::Instant;
 
 use crate::db::{self, now_ms};
 use crate::models::{ActionItem, AppSettings, Note};
+use crate::prompts;
 use crate::state::{AppState, SidecarProc};
 
 /// Context window we ask the backend to use. Long-note tasks overflow the
@@ -261,57 +262,43 @@ pub async fn auto_tag_and_route(app: &AppHandle, note_id: &str) -> Result<Note> 
     let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
     let folders_json = serde_json::to_string(&folder_names)?;
     let tags_json = serde_json::to_string(&existing_tags)?;
-    let system = "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.";
     let tag_instructions = if max_tags == 0 {
-        "Return an empty tags list.".to_string()
+        prompts::text("tag_route", "tag_instructions_off").to_string()
     } else {
-        format!(
-            "Suggest at most {max_tags} short lowercase topical tags (1-2 words each) — fewer is \
-             better, and an empty list is fine if nothing fits strongly. Tags must name the note's \
-             topic or domain (e.g. \"rust\", \"recipes\", \"travel\"). Reuse a tag from this \
-             existing vocabulary whenever one fits: {tags_json}. Never use status or filler words \
-             (done, todo, wip, note, notes, text, misc, stuff, idea, random), bare verbs, or words \
-             that merely appear in the note without describing it."
+        prompts::fill(
+            prompts::text("tag_route", "tag_instructions"),
+            &[("max_tags", max_tags.to_string().as_str()), ("tags_json", &tags_json)],
         )
     };
     let folder_instructions = if suggest_folders {
-        format!(
-            "Also choose the single best destination folder for the note from this list: \
-             {folders_json}. Use null for the folder if none fits well or the list is empty."
+        prompts::fill(
+            prompts::text("tag_route", "folder_instructions"),
+            &[("folders_json", &folders_json)],
         )
     } else {
-        "Use null for the folder.".to_string()
+        prompts::text("tag_route", "folder_instructions_off").to_string()
     };
-    let user = format!(
-        "{tag_instructions}\n\
-         {folder_instructions}\n\n\
-         NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
-         Reply with JSON exactly like: {{\"tags\": [\"tag1\"], \"folder\": \"folder name or null\"}}",
-        truncate_chars(&title, 200),
-        truncate_chars(&content, 6000),
+    let user = prompts::fill(
+        prompts::text("tag_route", "user"),
+        &[
+            ("tag_instructions", tag_instructions.as_str()),
+            ("folder_instructions", &folder_instructions),
+            ("title", &truncate_chars(&title, prompts::limit("tag_route", "title"))),
+            ("content", &truncate_chars(&content, prompts::limit("tag_route", "content"))),
+        ],
     );
 
     // Constrain the reply to our exact shape on backends that support it
     // (Ollama structured outputs, llama.cpp grammars). On backends that ignore
     // `response_format`, the prompt above plus `extract_json` still apply.
-    let schema = json!({
-        "type": "json_schema",
-        "json_schema": {
-            "name": "note_meta",
-            "strict": true,
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "tags": {"type": "array", "items": {"type": "string"}},
-                    "folder": {"type": ["string", "null"]},
-                },
-                "required": ["tags", "folder"],
-                "additionalProperties": false,
-            },
-        },
-    });
-
-    let reply = chat(app, system, &user, 250, Some(schema)).await?;
+    let reply = chat(
+        app,
+        prompts::text("tag_route", "system"),
+        &user,
+        prompts::max_tokens("tag_route"),
+        Some(prompts::response_format("tag_route")),
+    )
+    .await?;
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
 
@@ -425,51 +412,24 @@ pub async fn extract_actions(app: &AppHandle, note_id: &str) -> Result<Vec<Actio
 
     let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
     let cats_json = serde_json::to_string(&categories)?;
-    let system = "You extract action items from personal notes. Reply with ONLY valid JSON. No prose, no markdown fences.";
-    let user = format!(
-        "Today is {today}. Extract up to 6 concrete action items (tasks, follow-ups, reminders) \
-         from the note below. Only include real actions the author still needs to do — not facts, \
-         ideas, or completed work. If there are none, return an empty list.\n\
-         For each item give: \"text\" (short imperative phrase), \"category\" (one or two lowercase \
-         words; reuse one of {cats_json} when it fits, else invent a sensible one like \"work\", \
-         \"errands\", \"health\", \"follow-up\"), and \"due\" — \"YYYY-MM-DD\" or \"YYYY-MM-DD HH:MM\" \
-         if the note implies a date or deadline (resolve relative phrases like \"tomorrow\" or \
-         \"next friday\" using today's date), else null.\n\n\
-         NOTE TITLE: {}\nNOTE CONTENT:\n{}\n\n\
-         Reply with JSON exactly like: {{\"items\": [{{\"text\": \"...\", \"category\": \"...\", \"due\": null}}]}}",
-        truncate_chars(&title, 200),
-        truncate_chars(&content, 8000),
+    let user = prompts::fill(
+        prompts::text("actions", "user"),
+        &[
+            ("today", today.as_str()),
+            ("cats_json", &cats_json),
+            ("title", &truncate_chars(&title, prompts::limit("actions", "title"))),
+            ("content", &truncate_chars(&content, prompts::limit("actions", "content"))),
+        ],
     );
 
-    let schema = json!({
-        "type": "json_schema",
-        "json_schema": {
-            "name": "action_items",
-            "strict": true,
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "text": {"type": "string"},
-                                "category": {"type": "string"},
-                                "due": {"type": ["string", "null"]},
-                            },
-                            "required": ["text", "category", "due"],
-                            "additionalProperties": false,
-                        },
-                    },
-                },
-                "required": ["items"],
-                "additionalProperties": false,
-            },
-        },
-    });
-
-    let reply = chat(app, system, &user, 600, Some(schema)).await?;
+    let reply = chat(
+        app,
+        prompts::text("actions", "system"),
+        &user,
+        prompts::max_tokens("actions"),
+        Some(prompts::response_format("actions")),
+    )
+    .await?;
     let parsed =
         extract_json(&reply).ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
     let extracted: Vec<(String, String, Option<i64>)> = parsed["items"]
@@ -550,15 +510,19 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
         note.content
     };
 
-    let system = "You restructure messy notes into clean markdown. Reply with ONLY the restructured markdown — no preamble, no explanation.";
-    let user = format!(
-        "Rewrite the following stream-of-consciousness note as concise markdown bullet points. \
-         Group related points under short bold headings where it helps. Preserve every distinct \
-         piece of information, all links and image references.\n\n{}",
-        truncate_chars(&content, 12000),
+    let user = prompts::fill(
+        prompts::text("bulletify", "user"),
+        &[("content", truncate_chars(&content, prompts::limit("bulletify", "content")).as_str())],
     );
 
-    let reply = chat(app, system, &user, 2048, None).await?;
+    let reply = chat(
+        app,
+        prompts::text("bulletify", "system"),
+        &user,
+        prompts::max_tokens("bulletify"),
+        None,
+    )
+    .await?;
     let new_content = strip_fences(&reply);
     if new_content.trim().is_empty() {
         bail!("LLM returned an empty result");
@@ -579,23 +543,29 @@ pub async fn bulletify(app: &AppHandle, note_id: &str) -> Result<Note> {
 pub async fn merge_notes_text(app: &AppHandle, notes: &[Note]) -> Result<String> {
     let mut corpus = String::new();
     for n in notes {
-        corpus.push_str(&format!(
-            "### {}\n{}\n\n",
-            if n.title.trim().is_empty() { "(untitled)" } else { n.title.trim() },
-            truncate_chars(&n.content, 6000),
+        corpus.push_str(&prompts::fill(
+            prompts::text("merge", "note_block"),
+            &[
+                ("title", if n.title.trim().is_empty() { "(untitled)" } else { n.title.trim() }),
+                ("content", &truncate_chars(&n.content, prompts::limit("merge", "note_content"))),
+            ],
         ));
-        if corpus.len() > 24_000 {
+        if corpus.len() > prompts::limit("merge", "corpus") {
             break;
         }
     }
-    let system = "You merge overlapping personal notes into one well-organized markdown note. Reply with ONLY the merged markdown — no preamble.";
-    let user = format!(
-        "Merge these {} overlapping notes into a single coherent markdown note. Preserve every \
-         distinct fact, link, image reference and task. Remove duplicated information. Organize \
-         with short headings where it helps.\n\n{corpus}",
-        notes.len()
+    let user = prompts::fill(
+        prompts::text("merge", "user"),
+        &[("count", notes.len().to_string().as_str()), ("corpus", &corpus)],
     );
-    let reply = chat(app, system, &user, 3072, None).await?;
+    let reply = chat(
+        app,
+        prompts::text("merge", "system"),
+        &user,
+        prompts::max_tokens("merge"),
+        None,
+    )
+    .await?;
     let merged = strip_fences(&reply);
     if merged.trim().is_empty() {
         bail!("LLM returned an empty merge result");
@@ -616,12 +586,18 @@ pub async fn generate_title(app: &AppHandle, note_id: &str) -> Result<Note> {
         note.content
     };
 
-    let system = "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.";
-    let user = format!(
-        "Write a concise, descriptive title (3-8 words) for this note:\n\n{}",
-        truncate_chars(&content, 4000),
+    let user = prompts::fill(
+        prompts::text("title", "user"),
+        &[("content", truncate_chars(&content, prompts::limit("title", "content")).as_str())],
     );
-    let reply = chat(app, system, &user, 32, None).await?;
+    let reply = chat(
+        app,
+        prompts::text("title", "system"),
+        &user,
+        prompts::max_tokens("title"),
+        None,
+    )
+    .await?;
     let title: String = strip_fences(&reply)
         .lines()
         .find(|l| !l.trim().is_empty())
@@ -673,24 +649,31 @@ pub async fn summarize_collection(app: &AppHandle, kind: &str, key: &str) -> Res
     }
 
     let mut corpus = String::new();
-    for n in notes.iter().take(40) {
-        corpus.push_str(&format!(
-            "## {}\n{}\n\n",
-            if n.title.is_empty() { "(untitled)" } else { &n.title },
-            truncate_chars(&n.content, 1200)
+    for n in notes.iter().take(prompts::limit("summary", "max_notes")) {
+        corpus.push_str(&prompts::fill(
+            prompts::text("summary", "note_block"),
+            &[
+                ("title", if n.title.is_empty() { "(untitled)" } else { &n.title }),
+                ("content", &truncate_chars(&n.content, prompts::limit("summary", "note_content"))),
+            ],
         ));
-        if corpus.len() > 16000 {
+        if corpus.len() > prompts::limit("summary", "corpus") {
             break;
         }
     }
 
-    let system = "You summarize collections of personal notes. Reply with ONLY the summary paragraph — no heading, no preamble.";
-    let user = format!(
-        "Write one concise paragraph (4-6 sentences) that synthesizes the key themes, facts, \
-         decisions and open items across this collection of {} notes:\n\n{corpus}",
-        notes.len()
+    let user = prompts::fill(
+        prompts::text("summary", "user"),
+        &[("count", notes.len().to_string().as_str()), ("corpus", &corpus)],
     );
-    let summary = chat(app, system, &user, 500, None).await?;
+    let summary = chat(
+        app,
+        prompts::text("summary", "system"),
+        &user,
+        prompts::max_tokens("summary"),
+        None,
+    )
+    .await?;
     let summary = strip_fences(&summary);
 
     let db = state.db.lock().unwrap();

@@ -8,7 +8,7 @@ The rules for working in this codebase. Most were earned the hard way — when o
 2. **Trash invariant.** Every query that reads notes filters `deleted_at IS NULL` — lists, FTS and semantic search, related/similar, tag counts, action-item joins, queue picks, status counts, exports. Forgetting it resurrects trashed notes.
 3. **Migrations are additive only.** `migrate()` is an `execute_batch` of `IF NOT EXISTS` plus ignored `ALTER TABLE ADD COLUMN`s. Never rename/retype a column without introducing real versioned migrations first.
 4. **Snapshot before AI rewrites.** Any code path that lets the LLM overwrite note content (bulletify, merge, future rewrite features) calls `maybe_snapshot_note` first, unconditionally.
-5. **Bench mirror.** If you change a prompt, JSON schema, truncation limit, or max_tokens in `ai.rs`, mirror it in `bench/src/prompts.ts` — otherwise the benchmark silently measures stale prompts.
+5. **Prompts live in one file.** Every prompt, JSON schema, truncation limit, and max_tokens lives in `prompts/prompts.json`, embedded by `prompts.rs` (`include_str!`) and read by `bench/src/prompts.ts` — never inline prompt text in `ai.rs` or the bench. Any change there means bumping its `version` field (stamped into bench results so scores stay comparable). Reply *parsing* is still mirrored code: if you change parsing/normalization in `ai.rs`, mirror it in `bench/src/prompts.ts`.
 6. **Never rename** the bundle identifier (`com.nexusnote.app`) or the db filename — either orphans user data.
 7. **No hardcoded colors in components.** Every color comes from the theme variable ramps (see Theming below).
 
@@ -20,7 +20,7 @@ The rules for working in this codebase. Most were earned the hard way — when o
 - **Settings**: `AppSettings` is one `#[serde(default)]` JSON blob. Adding a field = struct + `Default` impl + `types.ts` + `SettingsModal`. Backend-owned settings live here; frontend-only state goes to localStorage.
 - **Worker behavior**: long-running/periodic work belongs in the `queue.rs` tick with a cooldown atomic, debounce respect, and a `current_activity` label so the UI can show it. Failures set a 60s cooldown and emit `worker-error`; never tight-loop a failing pipeline.
 - **Status flags**: any new per-note derived data follows the `CLEAN | PENDING | STALE` lifecycle with claim-then-write (`WHERE … AND status = 'PENDING'` guards against races with user edits).
-- **LLM calls**: go through `ai.rs::chat()`; pass a strict `json_schema` via `response_format` where the output is structured, and write prompts so the fallback `extract_json` works — always ask for a JSON *object*, never a bare array. Truncate note content deliberately and visibly (named const).
+- **LLM calls**: go through `ai.rs::chat()`; pass a strict `json_schema` via `response_format` where the output is structured, and write prompts so the fallback `extract_json` works — always ask for a JSON *object*, never a bare array. Prompt text, schemas, token caps and truncation limits come from `prompts/prompts.json` via the `prompts` module (golden rule 5); new AI features add a task entry there, never inline strings.
 - **Events**: kebab-case `noun-verb(ish)` names (`note-updated`, `sweep-done`, `action-due`). Emit after state is committed to the DB, not before. Document new events in `docs/architecture.md`'s catalog and register the listener in `App.tsx`.
 
 ## TypeScript / React frontend

@@ -69,12 +69,17 @@ function tableRow(model: string, a: Agg): string {
 const TABLE_HEADER = `| model | runs | errors | valid | det score | judge | p50 latency | p95 latency | in tok | out tok | cost/run |
 |---|---|---|---|---|---|---|---|---|---|---|`;
 
-export function renderReport(records: RunRecord[]): string {
+export function renderReport(
+  records: RunRecord[],
+  meta?: { promptVersion?: number },
+): string {
   const models = [...new Set(records.map((r) => r.model))];
   const features = [...new Set(records.map((r) => r.feature))] as FeatureName[];
 
   let out = `# NexusNote AI feature benchmark\n\n`;
-  out += `${records.length} runs · ${models.length} model(s) · ${features.length} feature(s)\n\n`;
+  out += `${records.length} runs · ${models.length} model(s) · ${features.length} feature(s)`;
+  if (meta?.promptVersion != null) out += ` · prompts v${meta.promptVersion}`;
+  out += `\n\n`;
   out += `Scores: **valid** = reply parseable the way the app parses it · **det score** = fraction of deterministic checks passed (0-1) · **judge** = optional Claude-judged quality (1-5).\n\n`;
 
   out += `## Overall\n\n${TABLE_HEADER}\n`;
@@ -124,9 +129,12 @@ function latestResultsFile(resultsDir: string): string {
 function main(): void {
   const benchDir = path.resolve(import.meta.dirname, "..");
   const file = process.argv[2] ?? latestResultsFile(path.join(benchDir, "results"));
-  const data = JSON.parse(readFileSync(file, "utf8")) as { records: RunRecord[] };
+  const data = JSON.parse(readFileSync(file, "utf8")) as {
+    config?: { promptVersion?: number };
+    records: RunRecord[];
+  };
   console.log(`Rendering ${file}\n`);
-  console.log(renderReport(data.records));
+  console.log(renderReport(data.records, { promptVersion: data.config?.promptVersion }));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

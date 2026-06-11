@@ -31,6 +31,7 @@ src-tauri/src/                # backend
   commands.rs                 # #[tauri::command] handlers
   queue.rs                    # 1s worker tick: reminders → embed queue → LLM queue
   ai.rs                       # chat(), auto-tag, bulletify, summaries, extract_actions
+  prompts.rs                  # loader for prompts/prompts.json (single prompt source)
   embed.rs                    # fastembed init (single-flight) + cosine search
   diff.rs                     # significant_change gate so typo fixes skip the queues
 ```
@@ -114,7 +115,7 @@ cargo check              # in src-tauri/ — fast backend check
   -- then: SELECT notified_at FROM action_items WHERE id='t1';
   ```
 - LLM-dependent testing needs Ollama running (`external`, `http://localhost:11434`) or a llama-server sidecar configured.
-- **Model benchmarking**: `npm run bench` (see `bench/README.md`) compares candidate LLMs on every AI feature using the app's exact prompts/schemas/parsing. `bench/src/prompts.ts` is a 1:1 port of `ai.rs` — **if you change a prompt, schema, truncation limit, or max_tokens in `ai.rs`, mirror it there** or the benchmark measures stale prompts. Supports any OpenAI-compatible server (the app's wire format) plus Claude models via the Anthropic SDK (`ANTHROPIC_API_KEY`); `--judge` adds Claude-graded quality scores.
+- **Model benchmarking**: `npm run bench` (see `bench/README.md`) compares candidate LLMs on every AI feature using the app's exact prompts/schemas/parsing. Prompt text, schemas, token caps and truncation limits live in **`prompts/prompts.json`** — embedded by `src-tauri/src/prompts.rs` (`include_str!`) and read by `bench/src/prompts.ts`, so app and bench can't drift. **Bump its `version` field on any change**; it's stamped into bench results. Reply *parsing* in `bench/src/prompts.ts` is still a hand mirror of `ai.rs` normalization — keep those in sync. Supports any OpenAI-compatible server (the app's wire format) plus Claude models via the Anthropic SDK (`ANTHROPIC_API_KEY`); `--judge` adds Claude-graded quality scores.
 
 ## Editor specifics
 

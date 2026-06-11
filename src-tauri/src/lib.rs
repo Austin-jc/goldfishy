@@ -4,6 +4,7 @@ mod db;
 mod diff;
 mod embed;
 mod models;
+mod prompts;
 mod queue;
 mod state;
 
