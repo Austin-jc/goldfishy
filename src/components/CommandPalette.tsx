@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Download,
   FileText,
+  FolderInput,
+  Import,
   Loader2,
   PanelLeft,
   Plus,
@@ -89,6 +91,14 @@ function buildCommands(close: () => void): Command[] {
     ...(llmReady
       ? [
           {
+            label: "Auto-arrange unfiled notes into folders",
+            icon: <Wand2 size={14} />,
+            run: () => {
+              close();
+              useStore.getState().setArrangeOpen(true);
+            },
+          } satisfies Command,
+          {
             label: "Auto-title untitled notes",
             icon: <Sparkles size={14} />,
             run: async () => {
@@ -145,6 +155,29 @@ function buildCommands(close: () => void): Command[] {
         } catch (e) {
           useStore.getState().toast(String(e), "error");
         }
+      },
+    },
+    {
+      label: "Import notes (.md / .txt files)…",
+      icon: <Import size={14} />,
+      run: async () => {
+        close();
+        const sel = await openDialog({
+          multiple: true,
+          filters: [{ name: "Notes", extensions: ["md", "markdown", "txt"] }],
+        });
+        if (!sel) return;
+        void useStore.getState().importNotePaths(Array.isArray(sel) ? sel : [sel]);
+      },
+    },
+    {
+      label: "Import a folder of notes…",
+      icon: <FolderInput size={14} />,
+      run: async () => {
+        close();
+        const dir = await openDialog({ directory: true, multiple: false });
+        if (typeof dir !== "string") return;
+        void useStore.getState().importNotePaths([dir]);
       },
     },
     {

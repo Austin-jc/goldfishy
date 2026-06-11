@@ -45,6 +45,35 @@ pub struct TagCount {
     pub count: i64,
 }
 
+/// One folder's worth of an auto-arrange plan: where a set of unfiled notes
+/// should go. `folder_id` is None when the LLM proposed a new folder —
+/// `apply_auto_arrange` creates it (or reuses a same-named one) on apply.
+#[derive(Serialize, Clone, Debug)]
+pub struct ArrangeGroup {
+    pub folder_id: Option<String>,
+    pub folder_name: String,
+    pub is_new: bool,
+    pub notes: Vec<Note>,
+}
+
+/// One accepted move from the auto-arrange review modal.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ArrangeMove {
+    pub note_id: String,
+    pub folder_id: Option<String>,
+    pub folder_name: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ImportResult {
+    /// Notes created.
+    pub imported: i64,
+    /// Files skipped because an identical note already exists.
+    pub skipped: i64,
+    /// Paths ignored (unsupported extension, unreadable, oversized).
+    pub ignored: i64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct ActionItem {
     pub id: String,

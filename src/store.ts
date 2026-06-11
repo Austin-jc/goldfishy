@@ -61,6 +61,8 @@ interface Store {
   paletteOpen: boolean;
   /** "Tidy up similar notes" review modal. */
   similarOpen: boolean;
+  /** "Auto-arrange unfiled notes" review modal. */
+  arrangeOpen: boolean;
   sidebarCollapsed: boolean;
   theme: string;
   /** Editor line-number gutter (display-only, persisted to localStorage). */
@@ -100,6 +102,9 @@ interface Store {
   setSettingsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
   setSimilarOpen: (b: boolean) => void;
+  setArrangeOpen: (b: boolean) => void;
+  /** Import .md/.txt files (or folders of them) and toast the outcome. */
+  importNotePaths: (paths: string[]) => Promise<void>;
   toggleSidebar: () => void;
   setTheme: (theme: string) => void;
   setLineNumbers: (on: boolean) => void;
@@ -130,6 +135,7 @@ export const useStore = create<Store>((set, get) => ({
   settingsOpen: false,
   paletteOpen: false,
   similarOpen: false,
+  arrangeOpen: false,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
@@ -281,6 +287,37 @@ export const useStore = create<Store>((set, get) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSimilarOpen: (similarOpen) => set({ similarOpen }),
+  setArrangeOpen: (arrangeOpen) => set({ arrangeOpen }),
+
+  importNotePaths: async (paths) => {
+    const { toast } = get();
+    try {
+      const res = await api.importNotes(paths);
+      if (res.imported > 0) {
+        await get().refreshNotes();
+        void get().refreshTags();
+        const skipped =
+          res.skipped > 0
+            ? ` (${res.skipped} duplicate${res.skipped === 1 ? "" : "s"} skipped)`
+            : "";
+        const canArrange = get().settings?.llm_backend !== "none";
+        toast(
+          `Imported ${res.imported} note${res.imported === 1 ? "" : "s"}${skipped}`,
+          "success",
+          canArrange
+            ? { label: "Auto-arrange", run: () => get().setArrangeOpen(true) }
+            : undefined,
+        );
+      } else if (res.skipped > 0) {
+        toast("Those notes are already in GoldFishy", "info");
+      } else {
+        toast("No importable notes found (.md / .txt files)", "info");
+      }
+    } catch (e) {
+      toast(String(e), "error");
+    }
+  },
+
   toggleSidebar: () =>
     set((s) => {
       const sidebarCollapsed = !s.sidebarCollapsed;

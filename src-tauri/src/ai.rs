@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::Instant;
 
 use crate::db::{self, now_ms};
-use crate::models::{ActionItem, AppSettings, Folder, Note};
+use crate::models::{ActionItem, AppSettings, ArrangeGroup, Folder, Note};
 use crate::prompts;
 use crate::state::{AppState, SidecarProc};
 
@@ -381,6 +381,104 @@ fn apply_tags_and_route(
         rusqlite::params![note_id],
     )?;
     Ok(())
+}
+
+/// Plan where the unfiled notes should be filed — the "auto-arrange" feature.
+/// Read-only: builds a review plan (existing folders preferred, new folders
+/// proposed only for multi-note topics); `commands::apply_auto_arrange`
+/// performs whatever the user accepts. Notes go to the LLM in batches as
+/// numbered title+snippet lines and are mapped back by index, so the model
+/// never has to echo IDs.
+pub async fn plan_arrange(app: &AppHandle) -> Result<Vec<ArrangeGroup>> {
+    let state = app.state::<AppState>();
+    let (unfiled, folders) = {
+        let db = state.db.lock().unwrap();
+        (db::list_unfiled_notes(&db)?, db::list_folders(&db)?)
+    };
+    if unfiled.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+    let folders_json = serde_json::to_string(&folder_names)?;
+    let batch = prompts::limit("arrange", "batch").max(1);
+    let title_cap = prompts::limit("arrange", "title");
+    let snippet_cap = prompts::limit("arrange", "snippet");
+
+    let mut groups: Vec<ArrangeGroup> = Vec::new();
+    let mut taken: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for chunk in unfiled.chunks(batch) {
+        let notes_block = chunk
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let title = if n.title.trim().is_empty() {
+                    "(untitled)".to_string()
+                } else {
+                    truncate_chars(n.title.trim(), title_cap)
+                };
+                let flat = n.content.split_whitespace().collect::<Vec<_>>().join(" ");
+                format!("{}. {} — {}", i + 1, title, truncate_chars(&flat, snippet_cap))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let user = prompts::fill(
+            prompts::text("arrange", "user"),
+            &[("folders_json", folders_json.as_str()), ("notes_block", &notes_block)],
+        );
+        let reply = chat(
+            app,
+            prompts::text("arrange", "system"),
+            &user,
+            prompts::max_tokens("arrange"),
+            Some(prompts::response_format("arrange")),
+        )
+        .await?;
+        let parsed = extract_json(&reply)
+            .ok_or_else(|| anyhow!("could not parse LLM reply as JSON: {reply}"))?;
+
+        let empty = Vec::new();
+        for g in parsed["groups"].as_array().unwrap_or(&empty) {
+            let Some(name) = g["folder"].as_str().map(str::trim).filter(|s| !s.is_empty()) else {
+                continue;
+            };
+            // One-based indices back to notes; out-of-range and already-assigned
+            // notes are dropped silently (model error, not the user's problem).
+            let notes: Vec<Note> = g["notes"]
+                .as_array()
+                .unwrap_or(&empty)
+                .iter()
+                .filter_map(|v| v.as_u64())
+                .filter(|&i| i >= 1 && (i as usize) <= chunk.len())
+                .map(|i| chunk[i as usize - 1].clone())
+                .filter(|n| taken.insert(n.id.clone()))
+                .collect();
+            if notes.is_empty() {
+                continue;
+            }
+            let (folder_id, folder_name, is_new) =
+                match folders.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
+                    Some(f) => (Some(f.id.clone()), f.name.clone(), false),
+                    None => (None, name.to_string(), true),
+                };
+            let merged = groups.iter_mut().find(|g| match (&g.folder_id, &folder_id) {
+                (Some(a), Some(b)) => a == b,
+                (None, None) => g.folder_name.eq_ignore_ascii_case(&folder_name),
+                _ => false,
+            });
+            match merged {
+                Some(g) => g.notes.extend(notes),
+                None => groups.push(ArrangeGroup { folder_id, folder_name, is_new, notes }),
+            }
+        }
+    }
+
+    // A brand-new folder for one note is sprawl, not organization — the prompt
+    // bans it and this is the code-side backstop.
+    groups.retain(|g| !g.is_new || g.notes.len() >= 2);
+    Ok(groups)
 }
 
 fn normalize_action_text(s: &str) -> String {

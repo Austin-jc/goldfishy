@@ -152,6 +152,9 @@ pub fn run() {
             commands::save_image_bytes,
             commands::export_notes,
             commands::backup_now,
+            commands::plan_auto_arrange,
+            commands::apply_auto_arrange,
+            commands::import_notes,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

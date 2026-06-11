@@ -9,7 +9,9 @@ import ReminderBanners from "./components/ReminderBanners";
 import SettingsModal from "./components/SettingsModal";
 import CommandPalette from "./components/CommandPalette";
 import SimilarNotesModal from "./components/SimilarNotesModal";
+import AutoArrangeModal from "./components/AutoArrangeModal";
 import Toasts from "./components/Toasts";
+import { isImagePath } from "./utils";
 import type { ActionItem, Note, QueueStatus } from "./types";
 
 // Webview zoom (⌘+/⌘−/⌘0), persisted across launches.
@@ -34,6 +36,7 @@ export default function App() {
   const paletteOpen = useStore((s) => s.paletteOpen);
   const actionsOpen = useStore((s) => s.actionsOpen);
   const similarOpen = useStore((s) => s.similarOpen);
+  const arrangeOpen = useStore((s) => s.arrangeOpen);
 
   useEffect(() => {
     void useStore.getState().init();
@@ -96,6 +99,21 @@ export default function App() {
     if (z !== 1) void getCurrentWebview().setZoom(z);
   }, []);
 
+  // OS files dropped anywhere on the window become imported notes (.md/.txt,
+  // or folders of them). Image drops stay the editor's business — it inserts
+  // them at the drop position — so they're filtered out here.
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type !== "drop") return;
+      const files = event.payload.paths.filter((p) => !isImagePath(p));
+      if (files.length === 0) return;
+      void useStore.getState().importNotePaths(files);
+    });
+    return () => {
+      void unlisten.then((u) => u());
+    };
+  }, []);
+
   // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘, settings, ⌘+/−/0 zoom.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -146,6 +164,7 @@ export default function App() {
       {settingsOpen && <SettingsModal />}
       {paletteOpen && <CommandPalette />}
       {similarOpen && <SimilarNotesModal />}
+      {arrangeOpen && <AutoArrangeModal />}
       <ReminderBanners />
       <Toasts />
     </div>

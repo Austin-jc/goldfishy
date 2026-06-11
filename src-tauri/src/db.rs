@@ -259,6 +259,18 @@ pub fn list_notes(
 }
 
 /// Soft-deleted notes, most recently trashed first.
+/// Unfiled (root-level) notes, excerpt columns — the auto-arrange working set.
+/// Excerpts are plenty: the plan prompt sends ≤160-char snippets and the
+/// review modal renders one preview line.
+pub fn list_unfiled_notes(conn: &Connection) -> Result<Vec<Note>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {NOTE_COLS_EXCERPT} FROM notes
+         WHERE folder_id IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_note)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 pub fn list_trashed(conn: &Connection) -> Result<Vec<Note>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {NOTE_COLS} FROM notes WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"

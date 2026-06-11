@@ -3,9 +3,12 @@ import type {
   ActionItem,
   ActionStatus,
   AppSettings,
+  ArrangeGroup,
+  ArrangeMove,
   BackupResult,
   CollectionSummary,
   Folder,
+  ImportResult,
   Note,
   NoteVersionMeta,
   QueueStatus,
@@ -121,4 +124,10 @@ export const api = {
   exportNotes: (dest: string, format: "markdown" | "json") =>
     invoke<number>("export_notes", { dest, format }),
   backupNow: () => invoke<BackupResult>("backup_now"),
+
+  // auto-arrange & import
+  planAutoArrange: () => invoke<ArrangeGroup[]>("plan_auto_arrange"),
+  applyAutoArrange: (moves: ArrangeMove[]) =>
+    invoke<number>("apply_auto_arrange", { moves }),
+  importNotes: (paths: string[]) => invoke<ImportResult>("import_notes", { paths }),
 };

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "_readme": "Single source of truth for every LLM prompt, JSON schema, token cap and truncation limit. Loaded by src-tauri/src/prompts.rs (include_str!) and bench/src/prompts.ts. {placeholders} are filled at call time; literal braces elsewhere are sent as-is. Bump `version` on ANY change here — it is stamped into bench results so scores are comparable.",
   "title": {
     "system": "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
@@ -111,5 +111,31 @@
     "user": "Write one concise paragraph (4-6 sentences) that synthesizes the key themes, facts, decisions and open items across this collection of {count} notes:\n\n{corpus}",
     "max_tokens": 500,
     "limits": { "note_content": 1200, "corpus": 16000, "max_notes": 40 }
+  },
+  "arrange": {
+    "system": "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.",
+    "user": "Below is a numbered list of the user's unfiled notes, plus their existing folders. Sort the notes into folders.\nRules:\n- Prefer an existing folder whenever one fits.\n- When several notes share a clear topic and no existing folder fits, you may propose ONE new folder for them — a concise 1-3 word Title Case name.\n- Never propose a new folder for a single note.\n- If nothing fits a note well, leave it out of \"groups\" entirely — do not force weak matches.\n- Each note number may appear in at most one group.\n\nEXISTING FOLDERS: {folders_json}\n\nNOTES:\n{notes_block}\n\nReply with JSON exactly like: {\"groups\": [{\"folder\": \"Folder Name\", \"notes\": [1, 2]}]} where the numbers reference the notes list above.",
+    "max_tokens": 700,
+    "limits": { "batch": 30, "title": 80, "snippet": 160 },
+    "schema_name": "arrange_plan",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "folder": { "type": "string" },
+              "notes": { "type": "array", "items": { "type": "integer" } }
+            },
+            "required": ["folder", "notes"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["groups"],
+      "additionalProperties": false
+    }
   }
 }

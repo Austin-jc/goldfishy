@@ -27,6 +27,7 @@ import {
   Tag,
   Trash2,
   Undo2,
+  Wand2,
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
@@ -484,6 +485,20 @@ export default function Sidebar() {
                 Tidy up similar notes
               </button>
             )}
+
+            {settings?.llm_backend !== "none" &&
+              tagFilter.length === 0 &&
+              unfiled.length >= 3 && (
+                <button
+                  onClick={() => useStore.getState().setArrangeOpen(true)}
+                  title="Let the AI propose folders for unfiled notes — you review before anything moves"
+                  className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-stone-500 transition-colors hover:text-clay-300"
+                >
+                  <Wand2 size={11} />
+                  Auto-arrange {unfiled.length} unfiled note
+                  {unfiled.length === 1 ? "" : "s"}
+                </button>
+              )}
 
             {/* pinned shortcuts — notes also stay in their tree position */}
             {pinnedNotes.length > 0 && (

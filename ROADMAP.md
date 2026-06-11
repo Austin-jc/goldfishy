@@ -31,6 +31,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Trash with restore** — soft delete (`deleted_at`); Trash section in the explorer with restore / delete-forever; auto-purge after 30 days; all queries (lists, search, FTS, queues, tags, action items, exports) exclude trashed notes.
 - [x] **Note version history** — snapshot title+content into `note_versions` whenever a significant change (per `diff.rs`) is about to overwrite it; keep last ~20; History popover in the editor with restore.
 - [x] **Scheduled backup export** — optional backup folder + interval in Settings; worker runs the existing markdown export periodically.
+- [x] **Import notes** — drag .md/.txt files (or folders of them) onto the window, or use the palette's Import commands; front matter from our own exports round-trips (title, tags, dates), duplicates are skipped, and imported notes land unfiled with both AI queues STALE so they get indexed/titled/tagged automatically.
 
 ## Desktop-native
 
@@ -41,6 +42,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 
 - [x] **Clean up & aggregate similar notes** — finds clusters of highly similar notes (cosine over embeddings, union-find at high threshold), shows them as review groups; "Merge" combines them into one note (LLM-merged content, union of tags) and moves the rest to Trash.
 - [x] **Regenerate tags** — `ai_retag_all` re-runs the organize pipeline over every note with live per-note progress (AI tags rewritten, manual tags untouched); "regenerate" on the TAGS header (two-step confirm) and a palette command.
+- [x] **Auto-arrange unfiled notes** — one batched LLM call plans folders for everything at root (existing folders preferred, new ones only for multi-note topics); review modal with per-note/per-group checkboxes; nothing moves until Apply. First step of the broader auto-arrange ability — filed notes are deliberately left alone for now.
 
 ## Research-backed top picks (June 2026, from docs/improvements.md)
 

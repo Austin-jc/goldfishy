@@ -11,7 +11,10 @@ use crate::ai;
 use crate::db::{self, now_ms};
 use crate::diff;
 use crate::embed;
-use crate::models::{ActionItem, AppSettings, Folder, Note, QueueStatus, TagCount};
+use crate::models::{
+    ActionItem, AppSettings, ArrangeGroup, ArrangeMove, Folder, ImportResult, Note, QueueStatus,
+    TagCount,
+};
 use crate::queue;
 use crate::state::AppState;
 
@@ -1313,6 +1316,261 @@ fn sanitize_filename(s: &str) -> String {
     } else {
         out
     }
+}
+
+// ------------------------------------------------------------ auto-arrange
+
+#[tauri::command]
+pub async fn plan_auto_arrange(app: AppHandle) -> CmdResult<Vec<ArrangeGroup>> {
+    ai::plan_arrange(&app).await.map_err(eanyhow)
+}
+
+/// Apply the accepted subset of an auto-arrange plan: create proposed folders
+/// (reusing a same-named one if it appeared meanwhile) and move the notes.
+#[tauri::command]
+pub async fn apply_auto_arrange(app: AppHandle, moves: Vec<ArrangeMove>) -> CmdResult<i64> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let mut folders = db::list_folders(&db).map_err(eanyhow)?;
+    let now = now_ms();
+    let mut moved = 0i64;
+    for m in moves {
+        // Resolve the target: a still-existing folder id, else a same-named
+        // folder, else create the proposed folder at the top level.
+        let target = m
+            .folder_id
+            .filter(|id| folders.iter().any(|f| &f.id == id))
+            .or_else(|| {
+                let name = m.folder_name.trim();
+                folders
+                    .iter()
+                    .find(|f| f.name.eq_ignore_ascii_case(name))
+                    .map(|f| f.id.clone())
+            });
+        let target = match target {
+            Some(id) => id,
+            None => {
+                let name = m.folder_name.trim().to_string();
+                if name.is_empty() {
+                    continue;
+                }
+                let id = Uuid::new_v4().to_string();
+                db.execute(
+                    "INSERT INTO folders(id, name, parent_id, created_at) VALUES (?1, ?2, NULL, ?3)",
+                    params![id, name, now],
+                )
+                .map_err(estr)?;
+                folders.push(Folder {
+                    id: id.clone(),
+                    name,
+                    parent_id: None,
+                    created_at: now,
+                });
+                id
+            }
+        };
+        moved += db
+            .execute(
+                "UPDATE notes SET folder_id = ?1, suggested_folder_id = NULL
+                 WHERE id = ?2 AND deleted_at IS NULL",
+                params![target, m.note_id],
+            )
+            .map_err(estr)? as i64;
+    }
+    Ok(moved)
+}
+
+// ------------------------------------------------------------ import
+
+/// Generous per-file cap — a multi-MB "note" is almost certainly not one.
+const IMPORT_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+fn is_note_file(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("md" | "markdown" | "txt")
+    )
+}
+
+/// Recursively gather importable files under a dropped directory. Non-note
+/// files inside a directory (images, PDFs, .DS_Store…) are passed over
+/// silently — folders legitimately contain them.
+fn collect_note_files(path: &std::path::Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth > 16 {
+        return;
+    }
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if name.starts_with('.') {
+        return;
+    }
+    if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for e in entries.flatten() {
+                collect_note_files(&e.path(), out, depth + 1);
+            }
+        }
+    } else if is_note_file(path) {
+        out.push(path.to_path_buf());
+    }
+}
+
+/// Parse the YAML front matter block our own exporter writes (title, tags,
+/// created, updated). Lenient by design: unknown keys are ignored and any
+/// parse failure just means "no front matter" — the whole file becomes content.
+fn parse_front_matter(raw: &str) -> (Option<String>, Vec<String>, Option<i64>, Option<i64>, String) {
+    let no_fm = |raw: &str| (None, Vec::new(), None, None, raw.to_string());
+    let Some(rest) = raw.strip_prefix("---\n").or_else(|| raw.strip_prefix("---\r\n")) else {
+        return no_fm(raw);
+    };
+    let Some(end) = rest.find("\n---") else {
+        return no_fm(raw);
+    };
+    let header = &rest[..end];
+    let mut body = &rest[end + 4..];
+    body = match body.find('\n') {
+        Some(nl) => &body[nl + 1..],
+        None => "",
+    };
+    let body = body.trim_start_matches(['\n', '\r']).to_string();
+
+    let quotes: &[char] = &['"', '\''];
+    let (mut title, mut tags, mut created, mut updated) = (None, Vec::new(), None, None);
+    for line in header.lines() {
+        let Some((key, value)) = line.split_once(':') else { continue };
+        let value = value.trim();
+        match key.trim() {
+            "title" => {
+                let t = value.trim_matches(quotes).trim();
+                if !t.is_empty() {
+                    title = Some(t.to_string());
+                }
+            }
+            "tags" => {
+                let inner = value.trim_start_matches('[').trim_end_matches(']');
+                tags = inner
+                    .split(',')
+                    .map(|t| t.trim().trim_matches(quotes).to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect();
+            }
+            "created" => {
+                created = chrono::DateTime::parse_from_rfc3339(value)
+                    .ok()
+                    .map(|d| d.timestamp_millis());
+            }
+            "updated" => {
+                updated = chrono::DateTime::parse_from_rfc3339(value)
+                    .ok()
+                    .map(|d| d.timestamp_millis());
+            }
+            _ => {}
+        }
+    }
+    (title, tags, created, updated, body)
+}
+
+/// Import .md/.txt files (or directories of them) as new unfiled notes.
+/// Round-trips our own markdown exports (front matter title/tags/dates);
+/// imported notes enter both AI queues STALE so they get indexed, titled and
+/// tagged like anything typed in the app.
+fn import_notes_core(app: &AppHandle, paths: Vec<String>) -> CmdResult<ImportResult> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut ignored = 0i64;
+    for p in &paths {
+        let path = PathBuf::from(p);
+        if path.is_dir() {
+            collect_note_files(&path, &mut files, 0);
+        } else if is_note_file(&path) {
+            files.push(path);
+        } else {
+            ignored += 1;
+        }
+    }
+
+    let state = app.state::<AppState>();
+    let now = now_ms();
+    let (mut imported, mut skipped) = (0i64, 0i64);
+    for path in files {
+        if std::fs::metadata(&path).map(|m| m.len() > IMPORT_MAX_BYTES).unwrap_or(true) {
+            ignored += 1;
+            continue;
+        }
+        let raw = match std::fs::read(&path) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(_) => {
+                ignored += 1;
+                continue;
+            }
+        };
+        let (fm_title, tags, created, updated, content) = parse_front_matter(&raw);
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let mut title = fm_title.unwrap_or(stem);
+        // Exported placeholders ("untitled", "untitled-3") stay untitled so
+        // auto-titling can do its job.
+        let lower = title.to_lowercase();
+        if lower == "untitled"
+            || (lower.starts_with("untitled-") && lower[9..].chars().all(|c| c.is_ascii_digit()))
+        {
+            title = String::new();
+        }
+        let content = content.trim().to_string();
+        if title.is_empty() && content.is_empty() {
+            ignored += 1;
+            continue;
+        }
+
+        let db = state.db.lock().unwrap();
+        let dup: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM notes
+                 WHERE title = ?1 AND content = ?2 AND deleted_at IS NULL",
+                params![title, content],
+                |r| r.get(0),
+            )
+            .map_err(estr)?;
+        if dup > 0 {
+            skipped += 1;
+            continue;
+        }
+        let id = Uuid::new_v4().to_string();
+        db.execute(
+            "INSERT INTO notes(id, title, content, folder_id, created_at, updated_at,
+                               embedding_status, llm_status, last_embed_input, last_llm_input)
+             VALUES (?1, ?2, ?3, NULL, ?4, ?5, 'STALE', 'STALE', '', '')",
+            params![
+                id,
+                title,
+                content,
+                created.unwrap_or(now),
+                updated.or(created).unwrap_or(now)
+            ],
+        )
+        .map_err(estr)?;
+        for t in &tags {
+            db.execute(
+                "INSERT OR IGNORE INTO note_tags(note_id, tag, source) VALUES (?1, ?2, 'manual')",
+                params![id, t],
+            )
+            .map_err(estr)?;
+        }
+        imported += 1;
+    }
+    Ok(ImportResult { imported, skipped, ignored })
+}
+
+#[tauri::command]
+pub async fn import_notes(app: AppHandle, paths: Vec<String>) -> CmdResult<ImportResult> {
+    tauri::async_runtime::spawn_blocking(move || import_notes_core(&app, paths))
+        .await
+        .map_err(estr)?
 }
 
 fn iso(ms: i64) -> String {

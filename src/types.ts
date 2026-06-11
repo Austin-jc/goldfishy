@@ -42,6 +42,27 @@ export interface TagCount {
   count: number;
 }
 
+/** One folder's worth of an auto-arrange plan (folder_id null = new folder). */
+export interface ArrangeGroup {
+  folder_id: string | null;
+  folder_name: string;
+  is_new: boolean;
+  notes: Note[];
+}
+
+/** One accepted move from the auto-arrange review modal. */
+export interface ArrangeMove {
+  note_id: string;
+  folder_id: string | null;
+  folder_name: string;
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  ignored: number;
+}
+
 export interface QueueStatus {
   embed_stale: number;
   embed_pending: number;

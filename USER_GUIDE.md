@@ -87,6 +87,7 @@ Once AI is enabled (next section), GoldFishy can:
 
 - 🏷 **Auto-tag** — a few seconds after you stop typing, the app quietly adds three suggested tags to your note. AI tags look green with a ✨; your own tags look neutral. Don't like one? Hover over it and click the ×.
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
+- 🪄 **Auto-arrange unfiled notes** — got a pile of notes sitting outside any folder? Click **Auto-arrange unfiled notes** in the sidebar (it appears when you have a few) and the AI proposes a folder for each one — using your existing folders where possible, suggesting a new folder only when several notes clearly belong together. You see the whole plan first, untick anything you disagree with, and nothing moves until you click **Move**.
 - • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and a preview of the tidied bullet points appears — click **Keep** to apply it (the old text is saved to History) or **Discard** to keep your note as-is.
 - 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it.
 - ✅ **Action items & reminders** — the AI also spots tasks and follow-ups in your notes ("call the dentist", "send the report by Friday") and proposes them in the **Actions panel** (the bell at the top of the left panel). Nothing is scheduled until you accept it. You can also highlight any text in a note and right-click it → **Add as action item** to file it yourself, instantly.
@@ -179,6 +180,15 @@ Your notes are never locked in. In **Settings → Data & Export**:
 - **Export all as JSON** — one structured file with everything; useful for importing into other software.
 
 Pick any destination folder (a USB stick, a cloud-synced folder, anywhere).
+
+### Bringing notes in
+
+Going the other direction is just as easy:
+
+- **Drag and drop** — drop `.md` or `.txt` files (or a whole folder of them) anywhere on the GoldFishy window. They're imported as new notes.
+- **Or pick files** — press **⌘K**, type `>import`, and choose **Import notes** (pick files) or **Import a folder of notes**.
+
+Imported notes land at the root of your list, and the AI treats them like anything you typed: they get indexed for search, titled if they need it, and tagged. Files exported from GoldFishy itself come back with their tags and dates intact, and duplicates are quietly skipped — importing the same folder twice won't create copies. After a big import, the toast offers **Auto-arrange** to file everything in one reviewed sweep.
 
 ---
 
