@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "_readme": "Single source of truth for every LLM prompt, JSON schema, token cap and truncation limit. Loaded by src-tauri/src/prompts.rs (include_str!) and bench/src/prompts.ts. {placeholders} are filled at call time; literal braces elsewhere are sent as-is. Bump `version` on ANY change here — it is stamped into bench results so scores are comparable.",
   "title": {
     "system": "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
@@ -114,7 +114,7 @@
   },
   "arrange": {
     "system": "You are the organization engine inside a note-taking app. Reply with ONLY valid JSON. No prose, no markdown fences.",
-    "user": "Below is a numbered list of the user's unfiled notes, plus their existing folders. Sort the notes into folders.\nRules:\n- Prefer an existing folder whenever one fits.\n- When several notes share a clear topic and no existing folder fits, you may propose ONE new folder for them — a concise 1-3 word Title Case name.\n- Never propose a new folder for a single note.\n- If nothing fits a note well, leave it out of \"groups\" entirely — do not force weak matches.\n- Each note number may appear in at most one group.\n\nEXISTING FOLDERS: {folders_json}\n\nNOTES:\n{notes_block}\n\nReply with JSON exactly like: {\"groups\": [{\"folder\": \"Folder Name\", \"notes\": [1, 2]}]} where the numbers reference the notes list above.",
+    "user": "Below is a numbered list of the user's unfiled notes, plus their existing folders. Sort the notes into folders by topic.\nRules:\n- A note belongs in a folder only when the folder's name clearly describes the note's topic. A folder merely being available is NOT a reason to use it.\n- When several notes share a clear topic and no existing folder describes it, propose ONE new folder for them — a concise 1-3 word Title Case topic name.\n- Never use or invent generic catch-all folders (names like \"test\", \"misc\", \"stuff\", \"general\", \"random\", \"new folder\").\n- Never propose a new folder for a single note.\n- When in doubt, leave the note out of \"groups\" entirely — unfiled is better than mis-filed, and an empty \"groups\" list is a perfectly good answer.\n- Each note number may appear in at most one group.\nNote lines may include [tags: …] — strong hints of that note's topic.\n\nEXISTING FOLDERS: {folders_json}\n\nNOTES:\n{notes_block}\n\nReply with JSON exactly like: {\"groups\": [{\"folder\": \"Folder Name\", \"notes\": [1, 2]}]} where the numbers reference the notes list above.",
     "max_tokens": 700,
     "limits": { "batch": 30, "title": 80, "snippet": 160 },
     "schema_name": "arrange_plan",

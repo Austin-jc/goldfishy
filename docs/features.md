@@ -23,7 +23,7 @@ The complete list of what GoldFishy does today, grouped by area. User-facing ins
 - **Pinned notes** — pinned section at the top of the explorer.
 - **Folder suggestions** — AI proposes a destination folder; nothing moves without Accept.
 - **Tidy up similar notes** — finds clusters of near-duplicate notes (cosine ≥ 0.80, union-find) and offers LLM-merged consolidation; sources go to Trash, tags/actions re-link.
-- **Auto-arrange unfiled notes** — one batched LLM pass proposes a folder for everything at root (existing folders preferred; new folders only for multi-note topics); review modal with per-note/per-group selection — nothing moves until Apply. Sidebar button and palette command.
+- **Auto-arrange unfiled notes** — one batched LLM pass proposes a folder for notes at root, but only on a real topical match (generic buckets like "misc"/"test" are banned in the prompt and filtered in code; tags feed the model as topic hints). The review modal is fully editable: per-note destination picker (any folder or a typed new one), a "no suggestion" section for manual filing, per-group/per-note selection — nothing moves until Apply. Sidebar button and palette command.
 - **Import notes** — drag .md/.txt files or whole folders onto the window, or use the palette's Import commands; our own exports round-trip (front-matter title/tags/dates), duplicates are skipped, and imports land unfiled where the AI pipeline (and auto-arrange) picks them up.
 
 ## Search & retrieval

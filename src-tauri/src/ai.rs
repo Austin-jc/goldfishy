@@ -20,6 +20,19 @@ const TAG_STOPWORDS: [&str; 12] = [
     "random", "general",
 ];
 
+/// Folder names that never make good homes — generic buckets defeat the point
+/// of topical filing. Auto-arrange neither offers these to the model nor
+/// accepts them back from it (backstop to the prompt's ban). Manual moves in
+/// the review modal can still target them — the user's folders are theirs.
+const GENERIC_FOLDER_NAMES: [&str; 16] = [
+    "test", "tests", "misc", "miscellaneous", "stuff", "random", "temp", "tmp", "general",
+    "other", "others", "new folder", "untitled", "inbox", "unsorted", "notes",
+];
+
+fn is_generic_folder_name(name: &str) -> bool {
+    GENERIC_FOLDER_NAMES.contains(&name.trim().to_lowercase().as_str())
+}
+
 /// Context window we ask the backend to use. Long-note tasks overflow the
 /// common 4096 default — `bulletify` sends ~12k chars (~4k tokens) and
 /// `summarize_collection` ~16k chars (~5k tokens) — which gets silently
@@ -399,7 +412,13 @@ pub async fn plan_arrange(app: &AppHandle) -> Result<Vec<ArrangeGroup>> {
         return Ok(Vec::new());
     }
 
-    let folder_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+    // Generic buckets aren't offered as destinations at all — filing into
+    // them is exactly what this feature exists to prevent.
+    let folder_names: Vec<&str> = folders
+        .iter()
+        .map(|f| f.name.as_str())
+        .filter(|n| !is_generic_folder_name(n))
+        .collect();
     let folders_json = serde_json::to_string(&folder_names)?;
     let batch = prompts::limit("arrange", "batch").max(1);
     let title_cap = prompts::limit("arrange", "title");
@@ -418,8 +437,14 @@ pub async fn plan_arrange(app: &AppHandle) -> Result<Vec<ArrangeGroup>> {
                 } else {
                     truncate_chars(n.title.trim(), title_cap)
                 };
+                let tags = if n.tags.is_empty() {
+                    String::new()
+                } else {
+                    let list: Vec<&str> = n.tags.iter().map(|t| t.tag.as_str()).collect();
+                    format!(" [tags: {}]", list.join(", "))
+                };
                 let flat = n.content.split_whitespace().collect::<Vec<_>>().join(" ");
-                format!("{}. {} — {}", i + 1, title, truncate_chars(&flat, snippet_cap))
+                format!("{}. {}{} — {}", i + 1, title, tags, truncate_chars(&flat, snippet_cap))
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -444,6 +469,11 @@ pub async fn plan_arrange(app: &AppHandle) -> Result<Vec<ArrangeGroup>> {
             let Some(name) = g["folder"].as_str().map(str::trim).filter(|s| !s.is_empty()) else {
                 continue;
             };
+            // Backstop: the model was told not to use generic buckets, but
+            // small models do it anyway — drop the whole group.
+            if is_generic_folder_name(name) {
+                continue;
+            }
             // One-based indices back to notes; out-of-range and already-assigned
             // notes are dropped silently (model error, not the user's problem).
             let notes: Vec<Note> = g["notes"]
