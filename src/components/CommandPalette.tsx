@@ -10,6 +10,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 import { api } from "../api";
 import { recentNoteIds, useStore } from "../store";
@@ -137,9 +138,11 @@ function buildCommands(close: () => void): Command[] {
   ];
 }
 
+const MODE_CYCLE: SearchMode[] = ["smart", "keyword", "semantic"];
+
 export default function CommandPalette() {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<SearchMode>("keyword");
+  const [mode, setMode] = useState<SearchMode>("smart");
   const [results, setResults] = useState<Note[]>([]);
   const [sel, setSel] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -186,7 +189,9 @@ export default function CommandPalette() {
           if (!cancelled) setBusy(false);
         }
       },
-      mode === "keyword" ? 120 : 450,
+      // Keyword is sub-50ms FTS; smart additionally embeds the query;
+      // pure semantic gets the longest leash.
+      mode === "keyword" ? 120 : mode === "smart" ? 200 : 450,
     );
     return () => {
       cancelled = true;
@@ -226,7 +231,7 @@ export default function CommandPalette() {
       setSel((s) => Math.max(s - 1, 0));
     } else if (e.key === "Tab" && !isCommandMode) {
       e.preventDefault();
-      setMode((m) => (m === "keyword" ? "semantic" : "keyword"));
+      setMode((m) => MODE_CYCLE[(MODE_CYCLE.indexOf(m) + 1) % MODE_CYCLE.length]);
     } else if (e.key === "Enter" && e.shiftKey && showCreate) {
       e.preventDefault();
       createFromQuery();
@@ -265,6 +270,8 @@ export default function CommandPalette() {
             <ChevronRight size={15} className="text-clay-400" />
           ) : mode === "semantic" ? (
             <Sparkles size={15} className="text-clay-400" />
+          ) : mode === "smart" ? (
+            <Wand2 size={15} className="text-stone-500" />
           ) : (
             <Search size={15} className="text-stone-500" />
           )}
@@ -286,7 +293,7 @@ export default function CommandPalette() {
           {!isCommandMode && (
             <span
               className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
-                mode === "semantic"
+                mode !== "smart"
                   ? "bg-clay-600/30 text-clay-300"
                   : "bg-stone-800 text-stone-500"
               }`}
@@ -345,6 +352,15 @@ export default function CommandPalette() {
                       <span className="truncate text-sm text-stone-100">
                         {n.title || "Untitled"}
                       </span>
+                      {n.matched_by === "semantic" && (
+                        <span
+                          className="flex shrink-0 items-center gap-0.5 self-center rounded-full border border-sage-700/60 px-1.5 text-[8px] text-sage-400"
+                          title="No term match — found by meaning (semantic search)"
+                        >
+                          <Sparkles size={8} />
+                          meaning
+                        </span>
+                      )}
                       <span className="ml-auto shrink-0 text-[9px] text-stone-600">
                         {typeof n.score === "number" && n.score <= 1 && n.score > 0
                           ? `${(n.score * 100).toFixed(0)}%`
@@ -393,7 +409,11 @@ export default function CommandPalette() {
           <span>↑↓ navigate</span>
           <span>↵ open</span>
           {showCreate && <span>⇧↵ create note</span>}
-          {!isCommandMode && <span>tab {mode === "keyword" ? "semantic" : "keyword"} search</span>}
+          {!isCommandMode && (
+            <span>
+              tab {MODE_CYCLE[(MODE_CYCLE.indexOf(mode) + 1) % MODE_CYCLE.length]} search
+            </span>
+          )}
           <span>&gt; commands</span>
           <span className="ml-auto">esc close</span>
         </div>

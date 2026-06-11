@@ -164,6 +164,7 @@ fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
         tags: Vec::new(),
         score: None,
         snippet: None,
+        matched_by: None,
     })
 }
 

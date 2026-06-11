@@ -54,7 +54,7 @@ src-tauri/src/                # backend
 
 **Events** (backend → frontend, listeners in `App.tsx`): `note-updated`, `queue-status`, `worker-error`, `sweep-done`, `action-items-changed`, `action-due`, `model-download-progress`.
 
-**Search**: keyword = FTS5 (`notes_fts`, triggers keep it synced, bm25 + snippet); semantic = in-process cosine scan over embedding BLOBs, threshold 0.25, top 30. Multi-tag filtering is **AND** (`HAVING COUNT(DISTINCT tag) = n` in `db.rs::list_notes`).
+**Search**: three modes, default **smart** = run keyword and semantic in parallel and fuse rankings with Reciprocal Rank Fusion (`score = Σ 1/(60 + rank)`, `commands.rs::search_notes`); per-result `matched_by` ("keyword"/"semantic"/"both") drives a ✨ "meaning" badge on semantic-only hits. The smart semantic leg is skipped unless `embedder_phase == READY`, so search never blocks on a model download (degrades to keyword). Keyword = FTS5 (`notes_fts`, triggers keep it synced, bm25 + snippet); semantic = in-process cosine scan over embedding BLOBs, threshold 0.25, top 30. Multi-tag filtering is **AND** (`HAVING COUNT(DISTINCT tag) = n` in `db.rs::list_notes`).
 
 ## Theming — the one rule
 

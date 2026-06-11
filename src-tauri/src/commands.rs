@@ -252,45 +252,89 @@ fn fts_query(q: &str) -> String {
         .join(" ")
 }
 
+/// bm25-ranked FTS5 hits, best first: (note id, highlighted snippet, bm25).
+fn keyword_ranked(
+    db: &rusqlite::Connection,
+    q: &str,
+    limit: usize,
+) -> CmdResult<Vec<(String, String, f64)>> {
+    let match_q = fts_query(q);
+    if match_q.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut stmt = db
+        .prepare(
+            "SELECT n.id,
+                    snippet(notes_fts, 1, '<mark>', '</mark>', ' … ', 14),
+                    bm25(notes_fts)
+             FROM notes_fts
+             JOIN notes n ON n.rowid = notes_fts.rowid
+             WHERE notes_fts MATCH ?1 AND n.deleted_at IS NULL
+             ORDER BY bm25(notes_fts)
+             LIMIT ?2",
+        )
+        .map_err(estr)?;
+    let rows = stmt
+        .query_map(params![match_q, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .map_err(estr)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+const SEMANTIC_THRESHOLD: f32 = 0.25;
+const SEMANTIC_TOP: usize = 30;
+
+/// Cosine-ranked semantic hits, best first. Embeds the query on the blocking
+/// pool, then scans all stored vectors in-process.
+async fn semantic_ranked(app: &AppHandle, q: &str) -> CmdResult<Vec<(String, f32)>> {
+    let vectors = embed::embed_texts(app.clone(), vec![q.to_string()])
+        .await
+        .map_err(eanyhow)?;
+    let qv = vectors
+        .into_iter()
+        .next()
+        .ok_or_else(|| "embedding failed".to_string())?;
+
+    let state = app.state::<AppState>();
+    let mut scored: Vec<(String, f32)> = {
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id, embedding FROM notes
+                 WHERE embedding IS NOT NULL AND deleted_at IS NULL",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(estr)?;
+        rows.filter_map(|r| r.ok())
+            .map(|(id, blob)| {
+                let score = embed::cosine(&qv, &embed::from_blob(&blob));
+                (id, score)
+            })
+            .collect()
+    };
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, s)| *s > SEMANTIC_THRESHOLD);
+    scored.truncate(SEMANTIC_TOP);
+    Ok(scored)
+}
+
 #[tauri::command]
 pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdResult<Vec<Note>> {
     let q = query.trim().to_string();
     if q.is_empty() {
         return Ok(vec![]);
     }
+    let state = app.state::<AppState>();
 
     if mode == "semantic" {
-        let vectors = embed::embed_texts(app.clone(), vec![q]).await.map_err(eanyhow)?;
-        let qv = vectors
-            .into_iter()
-            .next()
-            .ok_or_else(|| "embedding failed".to_string())?;
-
-        let state = app.state::<AppState>();
-        let mut scored: Vec<(String, f32)> = {
-            let db = state.db.lock().unwrap();
-            let mut stmt = db
-                .prepare(
-                    "SELECT id, embedding FROM notes
-                     WHERE embedding IS NOT NULL AND deleted_at IS NULL",
-                )
-                .map_err(estr)?;
-            let rows = stmt
-                .query_map([], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
-                })
-                .map_err(estr)?;
-            rows.filter_map(|r| r.ok())
-                .map(|(id, blob)| {
-                    let score = embed::cosine(&qv, &embed::from_blob(&blob));
-                    (id, score)
-                })
-                .collect()
-        };
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.retain(|(_, s)| *s > 0.25);
-        scored.truncate(30);
-
+        let scored = semantic_ranked(&app, &q).await?;
         let ids: Vec<String> = scored.iter().map(|(id, _)| id.clone()).collect();
         let db = state.db.lock().unwrap();
         let mut notes = db::get_notes_by_ids(&db, &ids).map_err(eanyhow)?;
@@ -299,33 +343,9 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
             n.score = score_map.get(n.id.as_str()).copied();
         }
         Ok(notes)
-    } else {
-        let state = app.state::<AppState>();
+    } else if mode == "keyword" {
         let db = state.db.lock().unwrap();
-        let match_q = fts_query(&q);
-        if match_q.is_empty() {
-            return Ok(vec![]);
-        }
-        let mut stmt = db
-            .prepare(
-                "SELECT n.id,
-                        snippet(notes_fts, 1, '<mark>', '</mark>', ' … ', 14),
-                        bm25(notes_fts)
-                 FROM notes_fts
-                 JOIN notes n ON n.rowid = notes_fts.rowid
-                 WHERE notes_fts MATCH ?1 AND n.deleted_at IS NULL
-                 ORDER BY bm25(notes_fts)
-                 LIMIT 50",
-            )
-            .map_err(estr)?;
-        let rows: Vec<(String, String, f64)> = stmt
-            .query_map(params![match_q], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-            })
-            .map_err(estr)?
-            .filter_map(|r| r.ok())
-            .collect();
-
+        let rows = keyword_ranked(&db, &q, 50)?;
         let ids: Vec<String> = rows.iter().map(|(id, _, _)| id.clone()).collect();
         let mut notes = db::get_notes_by_ids(&db, &ids).map_err(eanyhow)?;
         let meta: HashMap<&str, (&str, f64)> = rows
@@ -336,6 +356,77 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
             if let Some((snip, rank)) = meta.get(n.id.as_str()) {
                 n.snippet = Some(snip.to_string());
                 n.score = Some(-*rank as f32);
+            }
+        }
+        Ok(notes)
+    } else {
+        // "smart" (the default): run both engines and fuse the rankings with
+        // Reciprocal Rank Fusion — score(note) = Σ 1/(k + rank), k = 60 (the
+        // standard constant). Rank-based fusion sidesteps the incomparable
+        // scales of bm25 and cosine. The semantic leg is skipped until the
+        // embedder is READY, so a search never waits on a model download —
+        // it degrades to plain keyword results.
+        const RRF_K: f32 = 60.0;
+
+        let kw: Vec<(String, String, f64)> = {
+            let db = state.db.lock().unwrap();
+            keyword_ranked(&db, &q, 50)?
+        };
+        let embedder_ready = state.embedder_phase.load(Ordering::Relaxed)
+            == crate::state::embedder_phase::READY;
+        let sem: Vec<(String, f32)> = if embedder_ready {
+            match semantic_ranked(&app, &q).await {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[search] semantic leg failed, keyword-only: {e}");
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        #[derive(Default)]
+        struct Fused {
+            score: f32,
+            snippet: Option<String>,
+            kw: bool,
+            sem: bool,
+        }
+        let mut fused: HashMap<String, Fused> = HashMap::new();
+        for (i, (id, snip, _)) in kw.iter().enumerate() {
+            let e = fused.entry(id.clone()).or_default();
+            e.score += 1.0 / (RRF_K + (i + 1) as f32);
+            e.snippet = Some(snip.clone());
+            e.kw = true;
+        }
+        for (i, (id, _)) in sem.iter().enumerate() {
+            let e = fused.entry(id.clone()).or_default();
+            e.score += 1.0 / (RRF_K + (i + 1) as f32);
+            e.sem = true;
+        }
+
+        let mut ranked: Vec<(String, Fused)> = fused.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(50);
+
+        let ids: Vec<String> = ranked.iter().map(|(id, _)| id.clone()).collect();
+        let db = state.db.lock().unwrap();
+        let mut notes = db::get_notes_by_ids(&db, &ids).map_err(eanyhow)?;
+        let meta: HashMap<&str, &Fused> = ranked.iter().map(|(id, f)| (id.as_str(), f)).collect();
+        for n in notes.iter_mut() {
+            if let Some(f) = meta.get(n.id.as_str()) {
+                n.snippet = f.snippet.clone();
+                // RRF scores aren't human-meaningful — expose provenance
+                // instead (the UI badges semantic-only matches).
+                n.matched_by = Some(
+                    match (f.kw, f.sem) {
+                        (true, true) => "both",
+                        (false, true) => "semantic",
+                        _ => "keyword",
+                    }
+                    .to_string(),
+                );
             }
         }
         Ok(notes)

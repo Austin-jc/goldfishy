@@ -1,9 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Search, Sparkles, X } from "lucide-react";
+import { Loader2, Search, Sparkles, Wand2, X } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
 import { relativeTime, snippetHtml, stripMarkdown } from "../utils";
-import type { Note } from "../types";
+import type { Note, SearchMode } from "../types";
 
 export function SearchBar() {
   const mode = useStore((s) => s.searchMode);
@@ -11,6 +11,9 @@ export function SearchBar() {
   const searchActive = useStore((s) => s.searchResults !== null);
   const [q, setQ] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Monotonic token so a slow in-flight search (smart mode embeds the query)
+  // can't overwrite the results of a newer one.
+  const runSeq = useRef(0);
 
   // When the search is cleared from outside (zero-results "Create" button,
   // view switch, tag filter), the input follows suit.
@@ -25,30 +28,32 @@ export function SearchBar() {
       st.setSearchQuery("");
       return;
     }
+    const seq = ++runSeq.current;
     st.setSearching(true);
     try {
       const results = await api.searchNotes(query, m);
+      if (seq !== runSeq.current) return; // a newer search superseded this one
       st.setSearchResults(results);
       st.setSearchQuery(query);
     } catch (e) {
       st.toast(String(e), "error");
     } finally {
-      st.setSearching(false);
+      if (seq === runSeq.current) st.setSearching(false);
     }
   };
 
-  // Keyword search is instant (FTS5, sub-50ms); semantic runs on Enter.
+  // Smart and keyword search live as you type; pure semantic runs on Enter.
   const onChange = (value: string) => {
     setQ(value);
     if (timer.current) clearTimeout(timer.current);
-    if (mode === "keyword") {
+    if (mode !== "semantic") {
       timer.current = setTimeout(() => void run(value), 120);
     } else if (!value.trim()) {
       useStore.getState().setSearchResults(null);
     }
   };
 
-  const switchMode = (m: "keyword" | "semantic") => {
+  const switchMode = (m: SearchMode) => {
     useStore.getState().setSearchMode(m);
     if (q.trim()) void run(q, m);
   };
@@ -59,6 +64,8 @@ export function SearchBar() {
         <Loader2 size={13} className="animate-spin text-clay-400" />
       ) : mode === "semantic" ? (
         <Sparkles size={13} className="text-stone-500" />
+      ) : mode === "smart" ? (
+        <Wand2 size={13} className="text-stone-500" />
       ) : (
         <Search size={13} className="text-stone-500" />
       )}
@@ -80,7 +87,7 @@ export function SearchBar() {
             void run(q);
           }
         }}
-        placeholder={mode === "keyword" ? "Search notes…" : "Search by meaning… (Enter)"}
+        placeholder={mode === "semantic" ? "Search by meaning… (Enter)" : "Search notes…"}
         className="min-w-0 flex-1 bg-transparent text-xs text-stone-200 outline-none placeholder:text-stone-600"
       />
       {q && (
@@ -98,16 +105,23 @@ export function SearchBar() {
       {/* segmented mode toggle, embedded in the bar */}
       <div className="flex shrink-0 items-center gap-0.5 rounded-md bg-stone-950/70 p-0.5">
         <ModeButton
+          active={mode === "smart"}
+          onClick={() => switchMode("smart")}
+          title="Smart search (keyword + meaning, fused)"
+        >
+          <Wand2 size={11} />
+        </ModeButton>
+        <ModeButton
           active={mode === "keyword"}
           onClick={() => switchMode("keyword")}
-          title="Keyword search"
+          title="Keyword search only"
         >
           <Search size={11} />
         </ModeButton>
         <ModeButton
           active={mode === "semantic"}
           onClick={() => switchMode("semantic")}
-          title="Semantic search (by meaning)"
+          title="Semantic search only (by meaning)"
         >
           <Sparkles size={11} />
         </ModeButton>
@@ -250,6 +264,15 @@ export const NoteItem = memo(function NoteItem({ note }: { note: Note }) {
           )}
           {note.llm_status === "PENDING" && (
             <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-sage-400" title="AI organizing…" />
+          )}
+          {note.matched_by === "semantic" && (
+            <span
+              className="flex items-center gap-0.5 rounded-full border border-sage-700/60 px-1.5 text-[9px] text-sage-400"
+              title="No term match — found by meaning (semantic search)"
+            >
+              <Sparkles size={8} />
+              meaning
+            </span>
           )}
           {typeof note.score === "number" && note.score <= 1 && note.score > 0 && (
             <span className="rounded bg-stone-800 px-1 text-[9px] text-stone-400">

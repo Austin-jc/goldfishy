@@ -117,7 +117,7 @@ export const useStore = create<Store>((set, get) => ({
   view: { kind: "all", key: null },
   tagFilter: [],
   searchQuery: "",
-  searchMode: "keyword",
+  searchMode: "smart",
   searchResults: null,
   searching: false,
   settingsOpen: false,

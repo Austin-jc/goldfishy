@@ -66,13 +66,14 @@ You can use folders, tags, both, or neither — the search is good enough that m
 
 Press **⌘K** at any time to open the quick search window (like Spotlight). Start typing to see matching notes instantly, use the ↑↓ arrow keys to pick one, and press Enter to open it. Two more tricks:
 
-- Press **Tab** to switch between word-matching and "search by meaning".
+- Press **Tab** to cycle the search style: smart (the default blend) → word-matching → "search by meaning".
 - Type **>** as the first character to see commands instead — new note, settings, re-index, export — and run them with Enter.
 
 ### The search box
 
-You can also type in the search box at the top of the left panel. There are two search styles — switch with the tiny toggle inside the right edge of the box (🔍 / ✦):
+You can also type in the search box at the top of the left panel. There are three search styles — switch with the tiny toggle inside the right edge of the box:
 
+- **Smart** (default) — blends the two styles below into one ranked list, live as you type. Results that matched only by meaning (no word overlap) get a small green ✨ *meaning* badge so you know why they're there.
 - **Keyword** — finds notes containing the words you type. Instant, updates as you type.
 - **Semantic** — finds notes *about* what you type, even if the words don't match. Searching "flight stuff" will find your airline booking note even if it never says "flight stuff". Type your search, then press **Enter**.
 

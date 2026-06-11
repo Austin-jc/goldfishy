@@ -25,6 +25,10 @@ pub struct Note {
     pub score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<String>,
+    /// Smart-search provenance: "keyword" | "semantic" | "both" — which
+    /// engine(s) surfaced this result. Only set by the hybrid mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_by: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

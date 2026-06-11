@@ -9,5 +9,6 @@
 | [features.md](features.md) | Complete functionality & features list + keyboard shortcuts |
 | [conventions.md](conventions.md) | Coding conventions and architecture guidelines |
 | [improvements.md](improvements.md) | Research-backed backlog: best practices to adopt, performance optimizations, UI/UX ideas |
+| [ai-models.md](ai-models.md) | Candidate LLMs to try for the AI engine, speed levers, and how to bench them |
 
 Related, at repo root: [`HANDOFF.md`](../HANDOFF.md) (working knowledge & gotchas), [`ROADMAP.md`](../ROADMAP.md) (feature status), [`USER_GUIDE.md`](../USER_GUIDE.md) (end-user guide), [`bench/README.md`](../bench/README.md) (model benchmarking).

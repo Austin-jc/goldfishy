@@ -26,6 +26,8 @@ export interface Note {
   deleted_at: number | null;
   score?: number;
   snippet?: string;
+  /** Smart-search provenance: which engine(s) surfaced this result. */
+  matched_by?: "keyword" | "semantic" | "both";
 }
 
 export interface Folder {
@@ -111,7 +113,8 @@ export interface CollectionSummary {
   updated_at: number;
 }
 
-export type SearchMode = "keyword" | "semantic";
+/** "smart" fuses keyword + semantic rankings (RRF) and is the default. */
+export type SearchMode = "smart" | "keyword" | "semantic";
 
 export interface View {
   kind: "all" | "folder";

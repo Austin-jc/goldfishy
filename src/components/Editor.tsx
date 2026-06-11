@@ -205,8 +205,10 @@ function EditorInner({ noteId }: { noteId: string }) {
   const searchActive = useStore((s) => s.searchResults !== null);
   useEffect(() => {
     if (!editor || findOpen) return;
+    // Smart mode highlights like keyword — semantic-only matches simply have
+    // no term hits to mark.
     const terms =
-      searchActive && searchMode === "keyword"
+      searchActive && searchMode !== "semantic"
         ? searchQuery
             .split(/\s+/)
             .map((t) => t.replace(/^"+|"+$/g, ""))
