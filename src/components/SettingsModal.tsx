@@ -146,6 +146,9 @@ export default function SettingsModal() {
               Appearance
             </h3>
             <ThemePicker />
+            <div className="mt-3">
+              <LineNumbersToggle />
+            </div>
           </section>
 
           {/* ---------------- AI Engine (BYOM) ---------------- */}
@@ -579,6 +582,20 @@ function ThemePicker() {
         Applies immediately — no save needed.
       </p>
     </div>
+  );
+}
+
+/** Display-only preference — applies instantly, persisted to localStorage. */
+function LineNumbersToggle() {
+  const lineNumbers = useStore((s) => s.lineNumbers);
+  const setLineNumbers = useStore((s) => s.setLineNumbers);
+  return (
+    <ToggleRow
+      label="Line numbers in the editor"
+      desc="Number each block (paragraph, heading, list) in a gutter — applies immediately"
+      value={lineNumbers}
+      onChange={setLineNumbers}
+    />
   );
 }
 

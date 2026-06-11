@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { api, setDataDir } from "./api";
-import { applyTheme, DEFAULT_THEME } from "./themes";
+import { applyLineNumbers, applyTheme, DEFAULT_THEME } from "./themes";
 import type {
   ActionItem,
   AppSettings,
@@ -62,6 +62,8 @@ interface Store {
   similarOpen: boolean;
   sidebarCollapsed: boolean;
   theme: string;
+  /** Editor line-number gutter (display-only, persisted to localStorage). */
+  lineNumbers: boolean;
   toasts: Toast[];
   actionsOpen: boolean;
   actionItems: ActionItem[];
@@ -97,6 +99,7 @@ interface Store {
   setSimilarOpen: (b: boolean) => void;
   toggleSidebar: () => void;
   setTheme: (theme: string) => void;
+  setLineNumbers: (on: boolean) => void;
   setActionsOpen: (b: boolean) => void;
   refreshActions: () => Promise<void>;
   refreshTrash: () => Promise<void>;
@@ -125,6 +128,7 @@ export const useStore = create<Store>((set, get) => ({
   similarOpen: false,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
+  lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
   toasts: [],
   actionsOpen: false,
   actionItems: [],
@@ -283,6 +287,12 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.setItem("nn.theme", theme);
     applyTheme(theme);
     set({ theme });
+  },
+
+  setLineNumbers: (lineNumbers) => {
+    localStorage.setItem("nn.lineNumbers", lineNumbers ? "1" : "0");
+    applyLineNumbers(lineNumbers);
+    set({ lineNumbers });
   },
 
   setActionsOpen: (actionsOpen) => set({ actionsOpen }),

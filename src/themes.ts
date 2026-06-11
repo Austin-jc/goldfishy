@@ -30,3 +30,9 @@ export const DEFAULT_THEME = "clay";
 export function applyTheme(id: string) {
   document.documentElement.dataset.theme = id;
 }
+
+/** Editor line-number gutter (CSS keys off the data attribute). */
+export function applyLineNumbers(on: boolean) {
+  if (on) document.documentElement.dataset.lineNumbers = "1";
+  else delete document.documentElement.dataset.lineNumbers;
+}

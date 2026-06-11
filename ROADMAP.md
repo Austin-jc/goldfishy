@@ -24,6 +24,7 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Slash commands** — typing `/` at the start of a block opens an insert menu (headings, lists, task list, quote, code block, divider).
 - [x] **Paste images from clipboard** — ⌘V of image data saves through a `save_image_bytes` command and inserts like drag-drop.
 - [x] **⌘F find-in-note** — floating find bar with match count, next/prev cycling, mark-style highlights (shares the search-highlight extension).
+- [x] **Line numbers** — optional gutter (Settings → Appearance) numbering each top-level block, notepad-style; frontend-only (`nn.lineNumbers`).
 
 ## Data safety
 
@@ -53,3 +54,5 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Single-call worker pipeline** (AI-2/PERF-11) — `organize_note` returns `{title, tags, folder, items}` in one structured call; benchable as `organize`.
 - [x] **Embeddings versioned by model id** (AI-7) — model swap auto-wipes vectors and re-indexes.
 - [x] **Tag-refresh debounce + memoized tree rows** (PERF-4/6) — kills sidebar churn during worker sweeps.
+- [x] **Hybrid smart search** (NOTE-3) — BM25 + embeddings fused with RRF as the default mode; semantic-only hits badged "meaning"; degrades to keyword until the embedder is ready.
+- [x] **Palette shortcut hints** (UX-4) — every shortcut-backed action is a palette row with its ⌘-hint (incl. new Quick capture / Find in note / Toggle sidebar commands).

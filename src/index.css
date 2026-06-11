@@ -335,6 +335,36 @@ textarea,
   margin-top: 0.6em;
 }
 
+/* Optional line-number gutter (Settings → Appearance, `nn.lineNumbers`).
+   Notepad-style: each top-level block (paragraph, heading, whole list, code
+   block) counts as one line, so the numbers form a straight column inside the
+   editor's horizontal padding. */
+[data-line-numbers] .ProseMirror {
+  counter-reset: nn-line;
+}
+[data-line-numbers] .ProseMirror > * {
+  counter-increment: nn-line;
+  position: relative;
+}
+/* :not(.is-editor-empty) keeps the gutter off the placeholder paragraph,
+   whose ::before carries the placeholder text. */
+[data-line-numbers] .ProseMirror > *:not(.is-editor-empty)::before {
+  content: counter(nn-line);
+  position: absolute;
+  left: -2.4rem;
+  top: 0.3em;
+  width: 1.8rem;
+  text-align: right;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--color-stone-600) 70%, transparent);
+  user-select: none;
+  pointer-events: none;
+}
+
 .ProseMirror h1 {
   font-size: 1.55rem;
   font-weight: 700;
