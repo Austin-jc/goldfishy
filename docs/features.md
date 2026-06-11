@@ -12,6 +12,7 @@ The complete list of what GoldFishy does today, grouped by area. User-facing ins
 - **Images** — drag-drop or paste from clipboard; copied into app storage, portable relative paths.
 - **Autosave** — debounced 600 ms, flushed on unmount; no Save button anywhere.
 - **Find in note** — ⌘F floating bar with match count, next/prev, highlight decorations.
+- **Selection → action item** — right-click any text selection to file it as a scheduled action item linked to the note (or copy it).
 - **Line numbers** — optional gutter numbering each block (Settings → Appearance, applies instantly).
 - **Auto-bullet** — one click restructures stream-of-consciousness text into concise bullets, shown as a keep/discard preview; nothing is written until Keep (which snapshots first).
 

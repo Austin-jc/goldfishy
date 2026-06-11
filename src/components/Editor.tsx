@@ -50,6 +50,8 @@ import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { findTermRanges, TermHighlight } from "../editor/highlight";
 import { SlashCommands } from "../editor/slash";
 import { isImagePath, relativeTime } from "../utils";
+import ContextMenu from "./ContextMenu";
+import { Copy } from "lucide-react";
 import type { Note, NoteVersionMeta } from "../types";
 
 const lowlight = createLowlight(common);
@@ -96,6 +98,8 @@ function EditorInner({ noteId }: { noteId: string }) {
   const [findOpen, setFindOpen] = useState(false);
   /** Proposed AI rewrite awaiting keep/discard; nothing is saved until Keep. */
   const [rewriteProposal, setRewriteProposal] = useState<string | null>(null);
+  /** Right-click menu over a text selection (turn it into an action item). */
+  const [selMenu, setSelMenu] = useState<{ x: number; y: number; text: string } | null>(null);
 
   const titleRef = useRef(note.title);
   const contentRef = useRef(note.content);
@@ -277,6 +281,33 @@ function EditorInner({ noteId }: { noteId: string }) {
   const suggestedFolder = note.suggested_folder_id
     ? folders.find((f) => f.id === note.suggested_folder_id)
     : null;
+
+  // Right-click on a text selection → custom menu (action item, copy).
+  // Caret right-clicks and clicks outside the editor keep the native menu.
+  const onEditorContextMenu = (e: React.MouseEvent) => {
+    if (!editor || !editor.view.dom.contains(e.target as Node)) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const text = editor.state.doc.textBetween(from, to, " ").trim();
+    if (!text) return;
+    e.preventDefault();
+    setSelMenu({ x: e.clientX, y: e.clientY, text });
+  };
+
+  const addSelectionAction = async (text: string) => {
+    // Same cap the AI extraction applies to action texts.
+    const chars = Array.from(text);
+    const capped = chars.length > 200 ? chars.slice(0, 200).join("") + "…" : text;
+    try {
+      await api.createActionItem(capped, null, null, noteId);
+      useStore.getState().toast("Action item added", "success", {
+        label: "View",
+        run: () => useStore.getState().setActionsOpen(true),
+      });
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
 
   const runBulletify = async () => {
     await saveNow();
@@ -482,6 +513,7 @@ function EditorInner({ noteId }: { noteId: string }) {
         onClick={(e) => {
           if (e.target === e.currentTarget) editor?.chain().focus().run();
         }}
+        onContextMenu={onEditorContextMenu}
       >
         <div className="mx-auto w-full max-w-3xl px-10 pt-8">
           <input
@@ -568,6 +600,26 @@ function EditorInner({ noteId }: { noteId: string }) {
       </div>
 
       {editor && <SelectionMenu editor={editor} />}
+
+      {selMenu && (
+        <ContextMenu
+          x={selMenu.x}
+          y={selMenu.y}
+          onClose={() => setSelMenu(null)}
+          items={[
+            {
+              label: "Add as action item",
+              icon: <ListChecks size={13} />,
+              onClick: () => void addSelectionAction(selMenu.text),
+            },
+            {
+              label: "Copy",
+              icon: <Copy size={13} />,
+              onClick: () => void navigator.clipboard.writeText(selMenu.text),
+            },
+          ]}
+        />
+      )}
 
       {rewriteProposal !== null && (
         <RewritePreview
