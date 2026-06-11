@@ -9,7 +9,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 3. ✅ **Stop serializing Markdown per keystroke** (PERF-1) — typing latency, small fix. — **done:** `getMarkdown()` now runs once inside the debounced `saveNow()`.
 4. ✅ **Async-ify the remaining sync commands** (PERF-2) — the other half of the startup-unresponsiveness fix; mechanical. — **done:** every db-locking command is `async fn`; export/backup/image-save run on the blocking pool.
 5. ✅ **`list_notes` returns excerpts, not full content; don't block first paint on it** (PERF-3, PERF-16). — **done:** 240-char server-side excerpts; `duplicateNote` fetches the full note; `ready` no longer waits for the note list.
-6. **`PRAGMA synchronous = NORMAL`** (PERF-7) — one line, safe in WAL, faster autosaves.
+6. ✅ **`PRAGMA synchronous = NORMAL`** (PERF-7) — one line, safe in WAL, faster autosaves.
 7. **Search-or-create + recents in the palette** (NOTE-1, NOTE-2, UX-1–3) — the single highest-leverage notepad interaction pattern.
 8. **Collapse the per-note LLM pipeline into one structured call** (AI-2, PERF-11) — roughly halves per-note wall time and tokens.
 9. **Version embeddings by model id** (AI-7) — prerequisite for any model swap (quantized MiniLM / Model2Vec, PERF-12).
@@ -94,7 +94,7 @@ Verified against the code at the cited locations. Ordered by impact-for-effort.
 | PERF-4 | `React.memo` tree rows; compute hover snippets lazily (`stripMarkdown` runs per row per render today); narrow Sidebar's `queue` subscription | `Sidebar.tsx` 90/1017, `NoteList.tsx` 212 | Med-high — sidebar CPU while worker runs | S |
 | PERF-5 | `shouldRerenderOnTransaction: false` + `useEditorState` for SelectionMenu ([Tiptap perf guide](https://tiptap.dev/docs/guides/performance)) | `Editor.tsx` 138, 858 | Med-high — typing latency on large docs | S–M |
 | PERF-6 | Debounce the `note-updated` → `refreshTags()` storm (embed batch = 8 events/tick; sweep = hundreds) | `App.tsx` 42, `queue.rs` 69/271 | Medium — background churn | S |
-| PERF-7 | `PRAGMA synchronous = NORMAL` (WAL-safe; autosave commits 4–6×/save at FULL today) | `db.rs` open() 22–25 | Medium — write latency, db-mutex hold | S |
+| ✅ PERF-7 | `PRAGMA synchronous = NORMAL` (WAL-safe; autosave commits 4–6×/save at FULL today) | `db.rs` open() 22–25 | Medium — write latency, db-mutex hold | S |
 | PERF-8 | Collapse `queue_status` 4× COUNT(*) into one pass; rate-limit `emit_status` during sweeps | `queue.rs` 26–67 | Low-med | S |
 | PERF-9 | Code-split editor bundle: lazy `Editor`, dynamic lowlight grammars (capture window currently parses the full ~1 MB chunk too) | `Editor.tsx` 16/55, `main.tsx`, `App.tsx` 5–12 | Medium — startup ×2 webviews | M |
 | PERF-10 | Move embeddings (+ `last_*_input` copies) out of the `notes` row into a side table; stepping stone to sqlite-vec | `db.rs` 40–58; scans in `commands.rs` 272/362/416 | Med now, high at scale | M–L |

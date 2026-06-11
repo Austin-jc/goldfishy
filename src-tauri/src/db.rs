@@ -21,6 +21,10 @@ pub fn open(app: &AppHandle) -> Result<Connection> {
     std::fs::create_dir_all(dir.join("embed-cache"))?;
     let conn = Connection::open(dir.join("nexusnote.db"))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
+    // WAL guarantees consistency at NORMAL; only durability of the very last
+    // commits is at risk on power loss. Autosave commits 4-6×/save — fsyncing
+    // each at FULL held the db mutex for the disk flush.
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
     migrate(&conn)?;
