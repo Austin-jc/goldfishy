@@ -26,7 +26,8 @@ The complete list of what GoldFishy does today, grouped by area. User-facing ins
 
 - **Keyword search** — instant FTS5 with prefix matching and highlighted snippets; matches highlighted inside the opened note too.
 - **Semantic search** — local embeddings, search by meaning (toggle in the search bar, or Tab in the palette).
-- **Command palette** — ⌘K/⌘P: fuzzy note search (keyword/semantic), `>`-prefixed commands, VS Code style.
+- **Search-or-create** — zero-results searches offer to create a note titled with the query (sidebar and palette); results group under Today / Yesterday / Previous-days headers.
+- **Command palette** — ⌘K/⌘P: fuzzy note search (keyword/semantic), `>`-prefixed commands, VS Code style; empty query shows recently opened notes, and any query grows a "Create note" row (↵ on zero results, ⇧↵ anytime).
 - **Related notes** — most-similar notes at the bottom of the editor (cosine over embeddings).
 - **Collection summaries** — one-paragraph LLM synthesis of any folder or tag, cached.
 

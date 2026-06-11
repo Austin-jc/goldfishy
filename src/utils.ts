@@ -38,3 +38,23 @@ export function snippetHtml(snippet: string): string {
 export function isImagePath(p: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(p);
 }
+
+export const RECENCY_BUCKETS = [
+  "Today",
+  "Yesterday",
+  "Previous 7 days",
+  "Previous 30 days",
+  "Older",
+] as const;
+
+/** Which recency group header a timestamp belongs under (calendar days). */
+export function recencyBucket(ms: number): (typeof RECENCY_BUCKETS)[number] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 86_400_000;
+  if (ms >= startOfToday) return "Today";
+  if (ms >= startOfToday - day) return "Yesterday";
+  if (ms >= startOfToday - 7 * day) return "Previous 7 days";
+  if (ms >= startOfToday - 30 * day) return "Previous 30 days";
+  return "Older";
+}

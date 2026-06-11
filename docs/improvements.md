@@ -10,7 +10,7 @@ Findings from a research pass (June 2026) across three areas: AI-integration bes
 4. ✅ **Async-ify the remaining sync commands** (PERF-2) — the other half of the startup-unresponsiveness fix; mechanical. — **done:** every db-locking command is `async fn`; export/backup/image-save run on the blocking pool.
 5. ✅ **`list_notes` returns excerpts, not full content; don't block first paint on it** (PERF-3, PERF-16). — **done:** 240-char server-side excerpts; `duplicateNote` fetches the full note; `ready` no longer waits for the note list.
 6. ✅ **`PRAGMA synchronous = NORMAL`** (PERF-7) — one line, safe in WAL, faster autosaves.
-7. **Search-or-create + recents in the palette** (NOTE-1, NOTE-2, UX-1–3) — the single highest-leverage notepad interaction pattern.
+7. ✅ **Search-or-create + recents in the palette** (NOTE-1, NOTE-2, UX-1–3) — the single highest-leverage notepad interaction pattern. — **done:** MRU recents on empty palette, Create-from-query row (↵ on zero results, ⇧↵ anytime), zero-results Create button in SearchBar, recency group headers in results.
 8. **Collapse the per-note LLM pipeline into one structured call** (AI-2, PERF-11) — roughly halves per-note wall time and tokens.
 9. **Version embeddings by model id** (AI-7) — prerequisite for any model swap (quantized MiniLM / Model2Vec, PERF-12).
 10. **Coalesce the `note-updated` → `refreshTags` storm + memoize tree rows** (PERF-4, PERF-6) — kills background churn during sweeps.
@@ -41,8 +41,8 @@ Gaps first, ordered by value. Verified against `HANDOFF.md` and the code before 
 
 ## Lessons from note-taking apps
 
-- **NOTE-1 · Search-or-create as one gesture** (Notational Velocity, Obsidian quick switcher): Enter on zero results creates a note titled with the query. Nearly free; removes the new-note-then-title dance.
-- **NOTE-2 · Empty search shows recents.** Most retrieval is "the thing I touched recently." Track MRU (localStorage or a `last_opened_at` column); show in palette/search empty state.
+- ✅ **NOTE-1 · Search-or-create as one gesture** (Notational Velocity, Obsidian quick switcher): Enter on zero results creates a note titled with the query. Nearly free; removes the new-note-then-title dance. *(Shipped June 2026.)*
+- ✅ **NOTE-2 · Empty search shows recents.** Most retrieval is "the thing I touched recently." Track MRU (localStorage or a `last_opened_at` column); show in palette/search empty state. *(Shipped June 2026 — `nn.recentNotes` MRU.)*
 - **NOTE-3 · Hybrid search (BM25 + vector + RRF) instead of a mode toggle.** Run FTS5 and cosine in parallel, merge with Reciprocal Rank Fusion ([sqlite-vec hybrid search](https://alexgarcia.xyz/blog/2024/sqlite-vec-hybrid-search/index.html)). A default "smart" mode would beat either engine alone.
 - **NOTE-4 · Propose, never silently rewrite** — same conclusion as AI-1, from the editor-UX side (Tiptap AI Suggestion diff view).
 - **NOTE-5 · Capture-first, triage-later** (Drafts). Largely done via ⌘⇧N + auto-title/tag; missing half is a triage cue — unfiled count + one-key file-to-folder.
@@ -62,9 +62,9 @@ Gaps first, ordered by value. Verified against `HANDOFF.md` and the code before 
 
 Ordered by value-for-effort. (6 = AI-1's preview pattern; listed once here for the editor angle.)
 
-1. **Quick-switcher mode in the palette** — titles first, commands second, recents on empty query, Shift+Enter creates from query.
-2. **Zero-results "Create '<query>'" row** in SearchBar — every failed search becomes capture.
-3. **Recency group headers** (Today / Yesterday / Previous 30 days) in search results + relative timestamps on cards.
+1. ✅ **Quick-switcher mode in the palette** — titles first, commands second, recents on empty query, Shift+Enter creates from query. *(Shipped June 2026.)*
+2. ✅ **Zero-results "Create '<query>'" row** in SearchBar — every failed search becomes capture. *(Shipped June 2026.)*
+3. ✅ **Recency group headers** (Today / Yesterday / Previous 30 days) in search results + relative timestamps on cards. *(Shipped June 2026.)*
 4. **Shortcut hints in palette rows** — the palette teaches the keyboard (Linear pattern). Near-zero cost.
 5. **Word count / read time** in a quiet editor footer or info popover (Bear).
 6. ✅ **Inline accept/discard preview for AI rewrites** — sage-tinted proposed text (see AI-1). *(Shipped June 2026.)*

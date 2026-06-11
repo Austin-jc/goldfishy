@@ -22,6 +22,25 @@ export interface Toast {
 
 let toastSeq = 1;
 
+// Most-recently-opened notes (newest first) — drives the palette's empty
+// state. localStorage so it survives restarts without a schema change.
+const RECENTS_KEY = "nn.recentNotes";
+const RECENTS_MAX = 20;
+
+export function recentNoteIds(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordRecent(id: string) {
+  const next = [id, ...recentNoteIds().filter((x) => x !== id)].slice(0, RECENTS_MAX);
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+}
+
 interface Store {
   ready: boolean;
   notes: Note[];
@@ -60,6 +79,10 @@ interface Store {
   selectNote: (id: string | null) => Promise<void>;
   /** Create a note in `folderId`; defaults to the selected folder view. */
   createNote: (folderId?: string | null) => Promise<void>;
+  /** Search-or-create: new note titled `title`, opened immediately. */
+  createNoteWithTitle: (title: string) => Promise<void>;
+  /** Create a note titled with the current search query and clear the search. */
+  createNoteFromSearch: () => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   applyNoteUpdate: (note: Note) => void;
   removeNoteLocal: (id: string) => void;
@@ -154,6 +177,7 @@ export const useStore = create<Store>((set, get) => ({
     try {
       const note = await api.getNote(id);
       set({ selectedNote: note });
+      recordRecent(id);
     } catch (e) {
       get().toast(String(e), "error");
     }
@@ -166,9 +190,30 @@ export const useStore = create<Store>((set, get) => ({
     try {
       const note = await api.createNote(target);
       set((s) => ({ notes: [note, ...s.notes], selectedNote: note }));
+      recordRecent(note.id);
     } catch (e) {
       get().toast(String(e), "error");
     }
+  },
+
+  createNoteWithTitle: async (title) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    try {
+      const note = await api.createNote(null);
+      const updated = await api.updateNote(note.id, trimmed, "");
+      set((s) => ({ notes: [updated, ...s.notes], selectedNote: updated }));
+      recordRecent(updated.id);
+    } catch (e) {
+      get().toast(String(e), "error");
+    }
+  },
+
+  createNoteFromSearch: async () => {
+    const title = get().searchQuery.trim();
+    if (!title) return;
+    set({ searchQuery: "", searchResults: null });
+    await get().createNoteWithTitle(title);
   },
 
   deleteNote: async (id) => {

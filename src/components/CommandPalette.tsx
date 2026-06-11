@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { api } from "../api";
-import { useStore } from "../store";
+import { recentNoteIds, useStore } from "../store";
 import { relativeTime, snippetHtml, stripMarkdown } from "../utils";
 import type { Note, SearchMode } from "../types";
 
@@ -160,8 +160,15 @@ export default function CommandPalette() {
     if (isCommandMode) return;
     let cancelled = false;
     if (!query.trim()) {
+      // Empty query = recents: most retrieval is "the thing I touched
+      // recently". MRU-opened notes first, then by updated_at (list order).
       void api.listNotes(null, null).then((notes) => {
-        if (!cancelled) setResults(notes.slice(0, 12));
+        if (cancelled) return;
+        const rank = new Map(recentNoteIds().map((id, i) => [id, i]));
+        const sorted = [...notes].sort(
+          (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+        );
+        setResults(sorted.slice(0, 12));
       });
       return () => {
         cancelled = true;
@@ -187,12 +194,24 @@ export default function CommandPalette() {
     };
   }, [query, mode, isCommandMode]);
 
-  const itemCount = isCommandMode ? filteredCommands.length : results.length;
+  // Search-or-create: any non-empty query grows a trailing "Create" row, so a
+  // failed search is one keypress away from becoming the note.
+  const showCreate = !isCommandMode && query.trim().length > 0;
+  const itemCount = isCommandMode
+    ? filteredCommands.length
+    : results.length + (showCreate ? 1 : 0);
   useEffect(() => setSel(0), [query, mode]);
 
   const openNote = (id: string) => {
     close();
     void useStore.getState().selectNote(id);
+  };
+
+  const createFromQuery = () => {
+    const title = query.trim();
+    if (!title) return;
+    close();
+    void useStore.getState().createNoteWithTitle(title);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -208,12 +227,18 @@ export default function CommandPalette() {
     } else if (e.key === "Tab" && !isCommandMode) {
       e.preventDefault();
       setMode((m) => (m === "keyword" ? "semantic" : "keyword"));
+    } else if (e.key === "Enter" && e.shiftKey && showCreate) {
+      e.preventDefault();
+      createFromQuery();
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (isCommandMode) {
         void filteredCommands[sel]?.run();
       } else if (results[sel]) {
         openNote(results[sel].id);
+      } else if (showCreate) {
+        // Zero results (or the Create row is selected) — capture the query.
+        createFromQuery();
       }
     }
   };
@@ -299,6 +324,11 @@ export default function CommandPalette() {
             </>
           ) : (
             <>
+              {!query.trim() && results.length > 0 && (
+                <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                  Recent
+                </p>
+              )}
               {results.map((n, i) => (
                 <button
                   key={n.id}
@@ -334,10 +364,26 @@ export default function CommandPalette() {
                   </span>
                 </button>
               ))}
-              {results.length === 0 && !busy && (
-                <p className="px-4 py-6 text-center text-xs text-stone-600">
-                  {query.trim() ? "No results" : "No notes yet"}
-                </p>
+              {showCreate && (
+                <button
+                  data-idx={results.length}
+                  onMouseEnter={() => setSel(results.length)}
+                  onClick={createFromQuery}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${
+                    sel === results.length ? "bg-clay-600/20 text-clay-200" : "text-stone-300"
+                  }`}
+                >
+                  <Plus size={14} className="shrink-0 text-clay-400" />
+                  <span className="min-w-0 truncate">
+                    Create note “{query.trim()}”
+                  </span>
+                  <kbd className="ml-auto rounded border border-stone-700 px-1 text-[9px] text-stone-500">
+                    ⇧↵
+                  </kbd>
+                </button>
+              )}
+              {results.length === 0 && !busy && !showCreate && (
+                <p className="px-4 py-6 text-center text-xs text-stone-600">No notes yet</p>
               )}
             </>
           )}
@@ -346,6 +392,7 @@ export default function CommandPalette() {
         <div className="flex gap-3 border-t border-stone-800 px-3 py-1.5 text-[9px] text-stone-600">
           <span>↑↓ navigate</span>
           <span>↵ open</span>
+          {showCreate && <span>⇧↵ create note</span>}
           {!isCommandMode && <span>tab {mode === "keyword" ? "semantic" : "keyword"} search</span>}
           <span>&gt; commands</span>
           <span className="ml-auto">esc close</span>

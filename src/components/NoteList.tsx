@@ -8,8 +8,15 @@ import type { Note } from "../types";
 export function SearchBar() {
   const mode = useStore((s) => s.searchMode);
   const searching = useStore((s) => s.searching);
+  const searchActive = useStore((s) => s.searchResults !== null);
   const [q, setQ] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When the search is cleared from outside (zero-results "Create" button,
+  // view switch, tag filter), the input follows suit.
+  useEffect(() => {
+    if (!searchActive && useStore.getState().searchQuery === "") setQ("");
+  }, [searchActive]);
 
   const run = async (query: string, m = mode) => {
     const st = useStore.getState();
@@ -59,7 +66,19 @@ export function SearchBar() {
         value={q}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") void run(q);
+          if (e.key !== "Enter") return;
+          // Search-or-create: Enter on an already-run search with zero
+          // results turns the query into a new note's title.
+          const st = useStore.getState();
+          if (
+            st.searchResults?.length === 0 &&
+            q.trim() !== "" &&
+            q.trim() === st.searchQuery.trim()
+          ) {
+            void st.createNoteFromSearch();
+          } else {
+            void run(q);
+          }
         }}
         placeholder={mode === "keyword" ? "Search notes…" : "Search by meaning… (Enter)"}
         className="min-w-0 flex-1 bg-transparent text-xs text-stone-200 outline-none placeholder:text-stone-600"

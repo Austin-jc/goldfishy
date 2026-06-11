@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { relativeTime, stripMarkdown } from "../utils";
+import { recencyBucket, RECENCY_BUCKETS, relativeTime, stripMarkdown } from "../utils";
 import ContextMenu from "./ContextMenu";
 import GoldfishLogo from "./GoldfishLogo";
 import { NoteItem, SearchBar, SummaryBar } from "./NoteList";
@@ -91,6 +91,7 @@ export default function Sidebar() {
   const notes = useStore((s) => s.notes);
   const tagFilter = useStore((s) => s.tagFilter);
   const searchResults = useStore((s) => s.searchResults);
+  const searchQuery = useStore((s) => s.searchQuery);
   const selectView = useStore((s) => s.selectView);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const collapsed = useStore((s) => s.sidebarCollapsed);
@@ -347,15 +348,38 @@ export default function Sidebar() {
                 Results · {searchResults.length}
               </span>
             </div>
-            <div className="space-y-0.5 px-2 pb-2">
-              {searchResults.map((n) => (
-                <NoteItem key={n.id} note={n} />
-              ))}
-            </div>
+            {/* grouped by recency — rank order kept within each group */}
+            {RECENCY_BUCKETS.map((bucket) => {
+              const group = searchResults.filter(
+                (n) => recencyBucket(n.updated_at) === bucket,
+              );
+              if (group.length === 0) return null;
+              return (
+                <div key={bucket} className="pb-1">
+                  <p className="px-4 pb-0.5 pt-1 text-[9px] font-semibold uppercase tracking-wider text-stone-600">
+                    {bucket}
+                  </p>
+                  <div className="space-y-0.5 px-2">
+                    {group.map((n) => (
+                      <NoteItem key={n.id} note={n} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
             {searchResults.length === 0 && (
               <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-stone-600">
                 <FileText size={20} strokeWidth={1.5} />
                 <p className="text-xs">No results</p>
+                {searchQuery.trim() !== "" && (
+                  <button
+                    onClick={() => void useStore.getState().createNoteFromSearch()}
+                    className="flex cursor-pointer items-center gap-1 rounded-lg bg-clay-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-clay-500"
+                  >
+                    <Plus size={12} />
+                    Create “{searchQuery.trim()}”
+                  </button>
+                )}
               </div>
             )}
           </div>
