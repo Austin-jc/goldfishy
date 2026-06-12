@@ -34,6 +34,7 @@ import {
   PinOff,
   Plus,
   RefreshCw,
+  ScrollText,
   Settings,
   Sparkles,
   Tag,
@@ -163,6 +164,7 @@ export default function Sidebar() {
   const similarFinding = useStore((s) => s.similarFinding);
   const [addingRoot, setAddingRoot] = useState(false);
   const [titlingAll, setTitlingAll] = useState(false);
+  const [summarizingAll, setSummarizingAll] = useState(false);
   const [retagging, setRetagging] = useState(false);
   const [confirmRetag, setConfirmRetag] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(
@@ -338,6 +340,11 @@ export default function Sidebar() {
     [notes],
   );
 
+  const unsummarizedCount = useMemo(
+    () => notes.filter((n) => !n.summary?.trim() && n.content.trim()).length,
+    [notes],
+  );
+
   const titleAll = async () => {
     setTitlingAll(true);
     try {
@@ -350,6 +357,23 @@ export default function Sidebar() {
       useStore.getState().toast(String(e), "error");
     } finally {
       setTitlingAll(false);
+    }
+  };
+
+  const summarizeAll = async () => {
+    setSummarizingAll(true);
+    try {
+      const n = await api.aiSummarizeMissing();
+      useStore.getState().toast(
+        n > 0
+          ? `Summarized ${n} note${n === 1 ? "" : "s"}`
+          : "Every note already has a summary",
+        "success",
+      );
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setSummarizingAll(false);
     }
   };
 
@@ -564,6 +588,27 @@ export default function Sidebar() {
                   {titlingAll
                     ? "Titling…"
                     : `Auto-title ${untitledCount} untitled note${untitledCount === 1 ? "" : "s"}`}
+                </button>
+              )}
+
+            {/* catch-up for notes the summary pipeline hasn't covered yet */}
+            {settings?.llm_backend !== "none" &&
+              tagFilter.length === 0 &&
+              unsummarizedCount > 0 && (
+                <button
+                  onClick={() => void summarizeAll()}
+                  disabled={summarizingAll}
+                  title="Generate a summary for every note that doesn't have one — progress shows in the footer"
+                  className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-clay-400 transition-colors hover:text-clay-300 disabled:opacity-60"
+                >
+                  {summarizingAll ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <ScrollText size={11} />
+                  )}
+                  {summarizingAll
+                    ? "Summarizing…"
+                    : `Summarize ${unsummarizedCount} note${unsummarizedCount === 1 ? "" : "s"} without summaries`}
                 </button>
               )}
 

@@ -1294,6 +1294,55 @@ pub async fn ai_summarize_note(app: AppHandle, note_id: String) -> CmdResult<Not
     res
 }
 
+/// Generate a summary for every note that has content but no stored summary,
+/// sequentially, publishing live progress through the worker activity label.
+/// Returns how many notes were summarized; stops at the first LLM error
+/// (it's systemic).
+#[tauri::command]
+pub async fn ai_summarize_missing(app: AppHandle) -> CmdResult<i64> {
+    let notes: Vec<(String, String)> = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id, title FROM notes
+                 WHERE TRIM(content) != '' AND deleted_at IS NULL
+                   AND (summary IS NULL OR TRIM(summary) = '')
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(estr)?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let total = notes.len();
+    let mut done = 0i64;
+    for (i, (id, title)) in notes.iter().enumerate() {
+        let label = if title.trim().is_empty() { "Untitled" } else { title.trim() };
+        queue::set_activity(
+            &app,
+            Some((
+                format!("Summarizing “{label}” ({}/{total})…", i + 1),
+                Some(id.clone()),
+            )),
+        );
+        match ai::summarize_note(&app, id).await {
+            Ok(note) => {
+                done += 1;
+                let _ = app.emit("note-updated", note);
+            }
+            Err(e) => {
+                queue::set_activity(&app, None);
+                return Err(format!("Stopped after {done} of {total}: {e:#}"));
+            }
+        }
+    }
+    queue::set_activity(&app, None);
+    Ok(done)
+}
+
 #[tauri::command]
 pub async fn ai_summarize_collection(app: AppHandle, kind: String, key: String) -> CmdResult<String> {
     queue::set_activity(&app, Some(("Summarizing collection…".to_string(), None)));

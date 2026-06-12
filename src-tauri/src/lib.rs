@@ -141,6 +141,7 @@ pub fn run() {
             commands::ai_bulletify_preview,
             commands::apply_note_rewrite,
             commands::ai_summarize_note,
+            commands::ai_summarize_missing,
             commands::ai_summarize_collection,
             commands::get_collection_summary,
             commands::test_llm,

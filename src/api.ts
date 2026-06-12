@@ -98,6 +98,8 @@ export const api = {
   aiTitleUntitled: () => invoke<number>("ai_title_untitled"),
   aiRetagAll: () => invoke<number>("ai_retag_all"),
   aiSummarizeNote: (noteId: string) => invoke<Note>("ai_summarize_note", { noteId }),
+  /** Summarize every note that has content but no stored summary yet. */
+  aiSummarizeMissing: () => invoke<number>("ai_summarize_missing"),
   aiSummarizeCollection: (kind: string, key: string) =>
     invoke<string>("ai_summarize_collection", { kind, key }),
   getCollectionSummary: (kind: string, key: string) =>
