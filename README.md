@@ -18,6 +18,7 @@ Built with **Tauri 2** (Rust backend) + **React / TipTap / Tailwind** frontend, 
 
 **AI & automation (the smart layer)**
 - **Semantic search** — search by meaning, powered by local embeddings (no cloud)
+- **The Board** (⌘⇧B) — notes as a wall of cards, auto-clustered by meaning, plus Recent / Stale-ideas / Pinned feeds; drag a card to correct a cluster and the correction sticks through every re-tidy
 - **Auto-tagging & routing** — 3 suggested tags applied silently + a destination-folder suggestion you can accept or dismiss
 - **Auto-bulleting** — one click restructures stream-of-consciousness text into concise bullets
 - **Collection summaries** — one-paragraph synthesis of any folder or tag

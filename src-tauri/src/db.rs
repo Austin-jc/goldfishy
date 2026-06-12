@@ -130,6 +130,18 @@ fn migrate(conn: &Connection) -> Result<()> {
         [],
     );
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN deleted_at INTEGER", []);
+    // Board corrections: a hand-placed note sticks with its anchor's cluster
+    // across every re-tidy (NULL anchor = deliberately kept loose). One row
+    // per note — the latest correction wins.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS board_links (
+            note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+            anchor_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL
+        );
+        "#,
+    )?;
     Ok(())
 }
 
@@ -301,6 +313,26 @@ pub fn get_notes_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<Note>> 
         if let Some(n) = conn
             .query_row(
                 &format!("SELECT {NOTE_COLS} FROM notes WHERE id = ?1"),
+                params![id],
+                row_to_note,
+            )
+            .optional()?
+        {
+            notes.push(n);
+        }
+    }
+    attach_tags(conn, &mut notes)?;
+    Ok(notes)
+}
+
+/// Same as `get_notes_by_ids` but with excerpt columns — the Board renders
+/// short card previews only, so full content would be dead weight.
+pub fn get_notes_by_ids_excerpt(conn: &Connection, ids: &[String]) -> Result<Vec<Note>> {
+    let mut notes = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(n) = conn
+            .query_row(
+                &format!("SELECT {NOTE_COLS_EXCERPT} FROM notes WHERE id = ?1"),
                 params![id],
                 row_to_note,
             )

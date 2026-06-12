@@ -79,6 +79,17 @@ You can also type in the search box at the top of the left panel. There are thre
 
 > The first time you ever open the app it downloads a small "understanding" file (about 80 MB) in the background — the sidebar shows "Downloading semantic model…" while it happens, and you can keep writing the whole time. After that it works fully offline, forever.
 
+### The Board — your notes as a wall of cards
+
+Click the grid icon at the top of the left panel (or press **⌘⇧B**) and the writing area turns into a bulletin board of sticky-note cards. It has four views, switchable with the tabs at the top:
+
+- **Clusters** — the app groups related notes into labeled piles automatically (your coffee notes together, your project notes together…). Click **Tidy board** to re-group at any time. If the AI puts a note in the wrong pile, just **drag it to the right one** — the app remembers your correction forever and never moves that note again (it gets a small ✋ hand badge; right-click it and choose *Let AI place it again* to undo).
+- **Recent** — the last 15 notes you touched.
+- **Stale ideas** — notes you haven't opened in over a month that relate to what you're working on *now*. This is the "wait, I had a note about this!" view.
+- **Pinned** — every note you've pinned, as cards.
+
+Click any card to open the note. Clusters work without any AI setup — they use the same built-in "understanding" file as semantic search.
+
 ---
 
 ## 4. The AI features — what they do
