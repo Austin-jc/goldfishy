@@ -26,7 +26,7 @@ Gaps first, ordered by value. Verified against `HANDOFF.md` and the code before 
 - ✅ **AI-1 · Never silently replace user text — preview or one-tap undo.** Apple Writing Tools cycles each change with "Use Original"; Notion AI always ends keep/try-again/discard ([Smashing on agentic UX](https://www.smashingmagazine.com/2026/02/designing-agentic-ai-practical-ux-patterns/)). *Here:* `runBulletify` applies immediately with only a success toast; the snapshot is buried in History. Minimum: an **Undo** action on the toast calling `restore_note_version`. Better: sage-tinted keep/discard preview. (Merge already does review-first — keep that pattern.) *(Shipped June 2026: keep/discard preview via `ai_bulletify_preview` + `apply_note_rewrite`.)*
 - ✅ **AI-2 · One structured call per note, not three.** Per-call overhead dominates with small local models. *Here:* Queue-2 runs `generate_title` → `auto_tag_and_route` → `extract_actions` serially; one `json_schema` call returning `{title, tags, suggested_folder, actions}` halves wall time. Bench the quality cost first. *(Shipped June 2026 — `organize_note`; quality benchable via `npm run bench -- --features organize`.)*
 - ✅ **AI-3 · Prompts as versioned artifacts, single source.** Duplicated prompts drift and evals silently measure the wrong thing ([prompt versioning guide](https://agenta.ai/blog/prompt-versioning-guide)). *Here:* the bench mirror rule is exactly this failure mode. Move prompts/schemas to one shared file (`include_str!` in Rust, imported in TS, or codegen), add `PROMPT_VERSION`, stamp it into bench results. *(Shipped June 2026.)*
-- **AI-4 · Error states name the failing component and the recovery plan.** *Here:* `worker-error` toasts raw errors; the 60s cooldown is invisible. Show cooldown in the queue footer ("LLM backend unreachable — retrying in 60s") and distinguish backend-down from schema-parse failure.
+- ✅ **AI-4 · Error states name the failing component and the recovery plan.** *Here:* `worker-error` toasts raw errors; the 60s cooldown is invisible. Show cooldown in the queue footer ("LLM backend unreachable — retrying in 60s") and distinguish backend-down from schema-parse failure.
 - **AI-5 · User-visible log of what AI did.** Apple ships this as the Apple Intelligence Report. *Here:* tags are rewritten silently; titles appear unattributed; `ai.rs` has no logging. A small `ai_activity` table (note_id, action, model, timestamp) surfaced in the queue popover — also the natural home for future MCP/cloud entries.
 - **AI-6 · Ground collection summaries with clickable citations.** NotebookLM's defining trust feature. *Here:* change the summary schema to `[{point, note_ids}]` and link each point to its contributing notes — constrained decoding is already wired.
 - ✅ **AI-7 · Version embeddings by model.** Mixed-model vectors fail silently as garbage similarity. *Here:* store the model id in settings; on mismatch at startup, mark embeddings STALE and reuse the existing `reindex_all` sweep. Prerequisite for sqlite-vec and model swaps. *(Shipped June 2026 — vectors are also nulled on mismatch so a half-finished sweep can't mix models in search.)*
@@ -68,12 +68,12 @@ Ordered by value-for-effort. (6 = AI-1's preview pattern; listed once here for t
 2. ✅ **Zero-results "Create '<query>'" row** in SearchBar — every failed search becomes capture. *(Shipped June 2026.)*
 3. ✅ **Recency group headers** (Today / Yesterday / Previous 30 days) in search results + relative timestamps on cards. *(Shipped June 2026.)*
 4. ✅ **Shortcut hints in palette rows** — the palette teaches the keyboard (Linear pattern). Near-zero cost. *(Shipped June 2026 — every shortcut-backed action is a palette row with its ⌘-hint: new note, quick capture, find in note, toggle sidebar, settings.)*
-5. **Word count / read time** in a quiet editor footer or info popover (Bear).
+5. ✅ **Word count / read time** in a quiet editor footer or info popover (Bear). *(Shipped June 12, 2026.)*
 6. ✅ **Inline accept/discard preview for AI rewrites** — sage-tinted proposed text (see AI-1). *(Shipped June 2026.)*
-7. **Editor-only focus mode** — one shortcut collapses chrome; typewriter scrolling as phase 2 (iA Writer).
-8. **Version-history diff view** — added/removed lines highlighted before restore; reuses stored snapshots.
+7. ✅ **Editor-only focus mode** — one shortcut collapses chrome; typewriter scrolling as phase 2 (iA Writer). *(Shipped June 12, 2026 — ⌘⇧F.)*
+8. ✅ **Version-history diff view** — added/removed lines highlighted before restore; reuses stored snapshots. *(Shipped June 12, 2026.)*
 9. **Outline/ToC popover** built from headings for long notes (Bear Info Panel).
-10. **"Open today" command** + Journal folder — plain note, no calendar UI (NOTE-9).
+10. ✅ **"Open today" command** + Journal folder — plain note, no calendar UI (NOTE-9). *(Shipped June 12, 2026 — ⌘J.)*
 11. **Inbox triage affordance** — unfiled count badge + one-keystroke move-to-folder (FolderPicker already exists).
 12. **Hover preview popover** in the file tree (⌘-hover shows first lines; Obsidian page preview).
 13. **Pinned Scratchpad convention** — pinned note + a ⌘-Enter timestamp-divider command (Heynote, simplified). Keep it a convention, not a document type.
@@ -94,11 +94,11 @@ Verified against the code at the cited locations. Ordered by impact-for-effort.
 | ✅ PERF-2 | Async-ify remaining hot sync commands: `update_note`, `list_notes`, `create_note`, `reindex_all`, `save_image_bytes`, `export_notes`, `backup_now` (sync `fn`s run on the main thread; image paste base64-decodes on it today) | `commands.rs` 61, 234, 979, 1144, 1192, 1231 | **High** — removes UI stalls during worker write bursts | S |
 | ✅ PERF-3 | `list_notes` returns ~240-char server-side excerpts, not full content (UI only uses 120–220 chars; editor loads via `get_note`); fix `duplicateNote` consumer | `db.rs` 137/205, `store.ts` 127, `Sidebar.tsx` 1017 | **High** at scale — startup, refresh, memory | M |
 | ✅ PERF-4 | `React.memo` tree rows; compute hover snippets lazily (`stripMarkdown` runs per row per render today); narrow Sidebar's `queue` subscription | `Sidebar.tsx` 90/1017, `NoteList.tsx` 212 | Med-high — sidebar CPU while worker runs | S |
-| PERF-5 | `shouldRerenderOnTransaction: false` + `useEditorState` for SelectionMenu ([Tiptap perf guide](https://tiptap.dev/docs/guides/performance)) | `Editor.tsx` 138, 858 | Med-high — typing latency on large docs | S–M |
+| ✅ PERF-5 | `shouldRerenderOnTransaction: false` + `useEditorState` for SelectionMenu ([Tiptap perf guide](https://tiptap.dev/docs/guides/performance)) | `Editor.tsx` 138, 858 | Med-high — typing latency on large docs | S–M |
 | ✅ PERF-6 | Debounce the `note-updated` → `refreshTags()` storm (embed batch = 8 events/tick; sweep = hundreds) | `App.tsx` 42, `queue.rs` 69/271 | Medium — background churn | S |
 | ✅ PERF-7 | `PRAGMA synchronous = NORMAL` (WAL-safe; autosave commits 4–6×/save at FULL today) | `db.rs` open() 22–25 | Medium — write latency, db-mutex hold | S |
-| PERF-8 | Collapse `queue_status` 4× COUNT(*) into one pass; rate-limit `emit_status` during sweeps | `queue.rs` 26–67 | Low-med | S |
-| PERF-9 | Code-split editor bundle: lazy `Editor`, dynamic lowlight grammars (capture window currently parses the full ~1 MB chunk too) | `Editor.tsx` 16/55, `main.tsx`, `App.tsx` 5–12 | Medium — startup ×2 webviews | M |
+| ✅ PERF-8 | Collapse `queue_status` 4× COUNT(*) into one pass; rate-limit `emit_status` during sweeps | `queue.rs` 26–67 | Low-med | S |
+| ✅ PERF-9 | Code-split editor bundle: lazy `Editor`, dynamic lowlight grammars (capture window currently parses the full ~1 MB chunk too) | `Editor.tsx` 16/55, `main.tsx`, `App.tsx` 5–12 | Medium — startup ×2 webviews | M |
 | PERF-10 | Move embeddings (+ `last_*_input` copies) out of the `notes` row into a side table; stepping stone to sqlite-vec | `db.rs` 40–58; scans in `commands.rs` 272/362/416 | Med now, high at scale | M–L |
 | ✅ PERF-11 | Parallelize or merge `extract_actions` with the organize call (serial today, doubles per-note time) — pairs with AI-2 | `queue.rs` 345–359 | Medium — queue drain | M |
 | PERF-12 | Quantized embed model (`AllMiniLML6V2Q`, one line) now; evaluate [Model2Vec](https://github.com/MinishLab/model2vec) (~500× faster, no 80 MB download) later — requires AI-7 + re-index, re-tune the 0.80 merge threshold | `embed.rs` 37–42 | Medium — embed throughput, first launch | S / M–L |
@@ -158,15 +158,15 @@ Open items from the round-1 table all re-verified as still valid and still open:
 
 Curated by value-for-effort across all open items, implemented in this order (one commit each):
 
-1. **Spring-loaded folders** (QOL-1) — auto-expand collapsed folders after a ~650ms drag-hover dwell.
-2. **Editor typing latency** (PERF-5/24) — `shouldRerenderOnTransaction: false` + `useEditorState` for the selection menu.
-3. **Word count / read time** (round-1 UX-5) — quiet editor footer stat.
-4. **"Open today's note"** (round-1 UX-10/NOTE-9) — palette command + shortcut; date-titled note in a Journal folder.
-5. **Keyboard & a11y pass** (QOL-2/3/5/7 + part of QOL-4) — visible focus rings, Escape/Tab fixes in inline inputs, ARIA menu roles, longer confirm window.
-6. **Background churn reduction** (PERF-21/22/23 + PERF-8) — narrowed subscriptions, memoized Board cards, single-query `queue_status`.
-7. **AI error states that name the failure and the plan** (round-1 AI-4) — cooldown countdown in the queue footer, component-named worker errors.
-8. **Focus mode** (round-1 UX-7) — one shortcut collapses all chrome to just the editor.
-9. **Code-split the editor bundle** (PERF-9) — lazy `Editor`/`Board`, manual chunks; kills the 1.1MB single-chunk warning.
-10. **Version-history diff view** (round-1 UX-8/NOTE-11) — added/removed lines visible before restoring a snapshot.
+1. ✅ **Spring-loaded folders** (QOL-1) — auto-expand collapsed folders after a ~650ms drag-hover dwell. *(Shipped June 12, 2026.)*
+2. ✅ **Editor typing latency** (PERF-5/24) — `shouldRerenderOnTransaction: false` + `useEditorState` for the selection menu and find-bar count. *(Shipped June 12, 2026.)*
+3. ✅ **Word count / read time** (round-1 UX-5) — quiet editor footer stat; read time from 200 words. *(Shipped June 12, 2026.)*
+4. ✅ **"Open today's note"** (round-1 UX-10/NOTE-9) — ⌘J + palette row; date-titled note in a Journal folder, created on first use. *(Shipped June 12, 2026.)*
+5. ✅ **Keyboard & a11y pass** (QOL-2/5 + QOL-4) — global :focus-visible accent outline, ARIA menu roles + Escape on context menus, confirm window 2.5s→4s. QOL-3/7 turned out already correct in code. *(Shipped June 12, 2026.)*
+6. ✅ **Background churn reduction** (PERF-21/22/23 + PERF-8) — useShallow feeds/footer, memoized SortableCard, one-pass `COUNT(*) FILTER` queue_status. *(Shipped June 12, 2026.)*
+7. ✅ **AI error states that name the failure and the plan** (round-1 AI-4) — cooldown deadlines in QueueStatus, live retry countdown in the footer, recovery plan in worker-error toasts. *(Shipped June 12, 2026.)*
+8. ✅ **Focus mode** (round-1 UX-7) — ⌘⇧F collapses everything but the editor; session-only. *(Shipped June 12, 2026.)*
+9. ✅ **Code-split the editor bundle** (PERF-9) — lazy App/CaptureWindow per window + lazy Editor/Board; capture webview parses ~218KB instead of 1.15MB. *(Shipped June 12, 2026.)*
+10. ✅ **Version-history diff view** (round-1 UX-8/NOTE-11) — inline LCS line diff in the History popover; the diff is the confirmation step. *(Shipped June 12, 2026.)*
 
 Deliberately deferred from this round: PERF-19/20 (Board + related-notes vector work — wants the PERF-10 side-table/sqlite-vec refactor done first so it's built once), QOL-8 (calendar keyboard nav — low traffic surface), saved searches / ToC popover / front-matter export (next round candidates).
