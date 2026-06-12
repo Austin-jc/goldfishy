@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
+  MeasuringStrategy,
   PointerSensor,
   pointerWithin,
   useDraggable,
@@ -74,6 +75,9 @@ interface TreeDragData {
 const ROOT_DROP_ID = "root";
 /** Droppable id prefix for folder rows. */
 const FOLDER_DROP_PREFIX = "folderdrop:";
+/** Drag-hover dwell before a collapsed folder springs open. Finder uses
+ *  ~500ms–1s; shorter triggers accidental expansion while passing through. */
+const SPRING_OPEN_MS = 650;
 
 // Checked by the hover-preview timers: pointer events keep firing during a
 // pointer-based drag, and a preview card popping up mid-drag is just noise.
@@ -423,6 +427,9 @@ export default function Sidebar() {
     <DndContext
       sensors={dndSensors}
       collisionDetection={pointerWithin}
+      // Spring-loaded folders add droppables and shift rows mid-drag; keep
+      // measuring so drop zones track the expanded layout.
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={onTreeDragStart}
       onDragEnd={onTreeDragEnd}
       onDragCancel={onTreeDragCancel}
@@ -1467,6 +1474,24 @@ const FolderNode = memo(function FolderNode({
     dragData !== undefined &&
     !(dragData.kind === "folder" && isInSubtree(ctx.folderById, folder, dragData.id));
 
+  const children = ctx.childrenOf.get(folder.id) ?? [];
+  const folderNotes = ctx.notesByFolder.get(folder.id) ?? [];
+  const count = ctx.subtreeCounts.get(folder.id) ?? 0;
+  const hasContents = children.length > 0 || folderNotes.length > 0;
+  const expanded = ctx.isExpanded(folder.id);
+
+  // Spring-loaded folders: dwelling over a collapsed folder mid-drag opens
+  // it, so nested targets are reachable in a single drag.
+  const springOpen = dropHover && !expanded && hasContents;
+  useEffect(() => {
+    if (!springOpen) return;
+    const t = setTimeout(() => ctx.setExpanded(folder.id, true), SPRING_OPEN_MS);
+    return () => clearTimeout(t);
+    // ctx identity churns with unrelated store updates; re-arming the dwell
+    // timer on those would make deep targets unreachable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [springOpen, folder.id]);
+
   const deleteFolder = async () => {
     await api.deleteFolder(folder.id);
     await useStore.getState().refreshFolders();
@@ -1474,11 +1499,6 @@ const FolderNode = memo(function FolderNode({
     if (active) selectView({ kind: "all", key: null });
   };
 
-  const children = ctx.childrenOf.get(folder.id) ?? [];
-  const folderNotes = ctx.notesByFolder.get(folder.id) ?? [];
-  const count = ctx.subtreeCounts.get(folder.id) ?? 0;
-  const hasContents = children.length > 0 || folderNotes.length > 0;
-  const expanded = ctx.isExpanded(folder.id);
   const active = view.kind === "folder" && view.key === folder.id;
   // With a tag filter on, folders with no matches anywhere below recede.
   const dimmed = ctx.filterActive && count === 0;
