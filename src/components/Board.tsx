@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
   DragOverlay,
@@ -491,8 +492,10 @@ function ClusterSection({
 
 /** Sortable wrapper: the whole card is the drag handle; while it's in flight
  *  the DragOverlay carries the visual and this placeholder dims to mark the
- *  landing slot. Neighbours animate aside via dnd-kit's transforms. */
-function SortableCard({
+ *  landing slot. Neighbours animate aside via dnd-kit's transforms.
+ *  Memoized — one card's update shouldn't re-render its whole cluster
+ *  (useSortable still re-renders this card during drags as needed). */
+const SortableCard = memo(function SortableCard({
   note,
   corrected,
   onCorrectionCleared,
@@ -522,7 +525,7 @@ function SortableCard({
       />
     </div>
   );
-}
+});
 
 // ------------------------------------------------------------- simple feeds
 
@@ -546,8 +549,9 @@ function EmptyFeed({ icon, text }: { icon: React.ReactNode; text: string }) {
 }
 
 function RecentBoard() {
-  const notes = useStore((s) => s.notes);
-  const recent = notes.slice(0, RECENT_MAX);
+  // Shallow-compared slice: a worker burst replacing note #500 must not
+  // re-render this feed when the first RECENT_MAX entries are untouched.
+  const recent = useStore(useShallow((s) => s.notes.slice(0, RECENT_MAX)));
   return (
     <div className="flex-1 overflow-y-auto px-5 pb-6">
       <p className="pb-3 text-[10px] text-stone-600">The last {RECENT_MAX} notes you touched.</p>
@@ -561,8 +565,7 @@ function RecentBoard() {
 }
 
 function PinnedBoard() {
-  const notes = useStore((s) => s.notes);
-  const pinned = notes.filter((n) => n.pinned);
+  const pinned = useStore(useShallow((s) => s.notes.filter((n) => n.pinned)));
   return (
     <div className="flex-1 overflow-y-auto px-5 pb-6">
       <p className="pb-3 text-[10px] text-stone-600">

@@ -26,24 +26,27 @@ pub fn spawn_worker(app: AppHandle) {
 pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
-    let count = |status_col: &str, status: &str| -> rusqlite::Result<i64> {
-        db.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM notes WHERE {status_col} = '{status}' AND deleted_at IS NULL"
-            ),
-            [],
-            |r| r.get(0),
-        )
-    };
+    // One table pass for all four counters instead of four COUNT queries —
+    // this runs every worker tick and on every activity change.
+    let (embed_stale, embed_pending, llm_stale, llm_pending) = db.query_row(
+        "SELECT
+            COUNT(*) FILTER (WHERE embedding_status = 'STALE'),
+            COUNT(*) FILTER (WHERE embedding_status = 'PENDING'),
+            COUNT(*) FILTER (WHERE llm_status = 'STALE'),
+            COUNT(*) FILTER (WHERE llm_status = 'PENDING')
+         FROM notes WHERE deleted_at IS NULL",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )?;
     // Phase is an atomic on purpose: never block status on the embedder mutex,
     // which is held for the whole duration of a download or an embed batch.
     let phase = state.embedder_phase.load(Ordering::Relaxed);
     let activity = state.current_activity.lock().unwrap().clone();
     let status = QueueStatus {
-        embed_stale: count("embedding_status", "STALE")?,
-        embed_pending: count("embedding_status", "PENDING")?,
-        llm_stale: count("llm_status", "STALE")?,
-        llm_pending: count("llm_status", "PENDING")?,
+        embed_stale,
+        embed_pending,
+        llm_stale,
+        llm_pending,
         sweep_active: state.sweep_active.load(Ordering::Relaxed),
         embedder_ready: phase == crate::state::embedder_phase::READY,
         embedder_state: crate::state::embedder_phase::as_str(phase).to_string(),

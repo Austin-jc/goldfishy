@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
   DragOverlay,
@@ -1066,7 +1067,9 @@ function ActionsBell() {
 }
 
 function QueueFooter() {
-  const queue = useStore((s) => s.queue);
+  // Shallow-compared: queue-status events arrive every worker tick with a
+  // fresh object; only actual field changes should re-render the footer.
+  const queue = useStore(useShallow((s) => s.queue));
   const [open, setOpen] = useState(false);
   const [queued, setQueued] = useState<Note[]>([]);
 
