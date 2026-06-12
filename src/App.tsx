@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useStore } from "./store";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
+import Board from "./components/Board";
 import ActionPanel from "./components/ActionPanel";
 import ReminderBanners from "./components/ReminderBanners";
 import SettingsModal from "./components/SettingsModal";
@@ -37,6 +38,7 @@ export default function App() {
   const actionsOpen = useStore((s) => s.actionsOpen);
   const similarOpen = useStore((s) => s.similarOpen);
   const arrangeOpen = useStore((s) => s.arrangeOpen);
+  const boardOpen = useStore((s) => s.boardOpen);
 
   useEffect(() => {
     void useStore.getState().init();
@@ -124,6 +126,11 @@ export default function App() {
         e.preventDefault();
         const st = useStore.getState();
         st.setPaletteOpen(!st.paletteOpen);
+      } else if (key === "b" && e.shiftKey) {
+        // Plain ⌘B stays the editor's bold toggle.
+        e.preventDefault();
+        const st = useStore.getState();
+        st.setBoardOpen(!st.boardOpen);
       } else if (key === "n") {
         e.preventDefault();
         void useStore.getState().createNote();
@@ -159,7 +166,7 @@ export default function App() {
   return (
     <div className="flex h-full">
       <Sidebar />
-      <Editor />
+      {boardOpen ? <Board /> : <Editor />}
       {actionsOpen && <ActionPanel />}
       {settingsOpen && <SettingsModal />}
       {paletteOpen && <CommandPalette />}

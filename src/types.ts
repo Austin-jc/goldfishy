@@ -110,6 +110,8 @@ export interface AppSettings {
   related_notes_threshold: number;
   /** Cosine floor for "Tidy up" merge candidates. */
   similar_merge_threshold: number;
+  /** Cosine floor for Board clusters (topical groups, not duplicates). */
+  board_cluster_threshold: number;
 }
 
 export interface BackupResult {
@@ -156,6 +158,28 @@ export interface View {
   kind: "all" | "folder";
   /** Folder id when kind === "folder". */
   key: string | null;
+}
+
+/** Which curated feed the Board is showing. */
+export type BoardMode = "clusters" | "recent" | "stale" | "pinned";
+
+/** One semantic cluster on the Board; corrections attach to `anchor_id`. */
+export interface BoardCluster {
+  anchor_id: string;
+  label: string;
+  /** Set when the label is a real tag — dropping a note here also tags it. */
+  label_tag: string | null;
+  notes: Note[];
+}
+
+export interface BoardData {
+  clusters: BoardCluster[];
+  /** Embedded notes that didn't cluster with anything. */
+  loose: Note[];
+  /** Note ids placed by hand — badged, and re-tidies never move them. */
+  corrected: string[];
+  /** Live notes still waiting for an embedding (not on the board yet). */
+  pending: number;
 }
 
 export interface DownloadProgress {

@@ -12,8 +12,8 @@ use crate::db::{self, now_ms};
 use crate::diff;
 use crate::embed;
 use crate::models::{
-    ActionItem, AppSettings, ArrangeGroup, ArrangeMove, Folder, ImportResult, Note, QueueStatus,
-    TagCount,
+    ActionItem, AppSettings, ArrangeGroup, ArrangeMove, BoardCluster, BoardData, Folder,
+    ImportResult, Note, QueueStatus, TagCount,
 };
 use crate::queue;
 use crate::state::AppState;
@@ -677,6 +677,316 @@ pub async fn merge_notes(app: AppHandle, note_ids: Vec<String>) -> CmdResult<Not
     let _ = app.emit("note-updated", &note);
     let _ = app.emit("action-items-changed", ());
     Ok(note)
+}
+
+// ---------------------------------------------------------------- board
+
+/// Working set: the board never renders more than this many notes, so the
+/// O(n²) cosine pass and the card grid both stay cheap.
+const BOARD_CAP: usize = 400;
+
+/// Semantic clusters for the Board: cosine union-find over the most recent
+/// embedded notes at the tunable `board_cluster_threshold`. Hand corrections
+/// (board_links) always win — a corrected note ignores its cosine edges and
+/// joins its anchor's cluster instead (or stays loose when the anchor is
+/// NULL), so a re-tidy can never undo what the user fixed.
+#[tauri::command]
+pub async fn board_clusters(app: AppHandle) -> CmdResult<BoardData> {
+    let state = app.state::<AppState>();
+    let (threshold, ids, vecs, links, pending) = {
+        let db = state.db.lock().unwrap();
+        let threshold = db::load_settings(&db).board_cluster_threshold.clamp(0.0, 1.0);
+        let mut stmt = db
+            .prepare(
+                "SELECT id, embedding FROM notes
+                 WHERE embedding IS NOT NULL AND deleted_at IS NULL
+                 ORDER BY updated_at DESC LIMIT ?1",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map(params![BOARD_CAP as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(estr)?;
+        let mut ids = Vec::new();
+        let mut vecs = Vec::new();
+        for row in rows.filter_map(|r| r.ok()) {
+            ids.push(row.0);
+            vecs.push(embed::from_blob(&row.1));
+        }
+        let mut stmt = db
+            .prepare("SELECT note_id, anchor_id FROM board_links")
+            .map_err(estr)?;
+        let links: HashMap<String, Option<String>> = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })
+            .map_err(estr)?
+            .filter_map(|r| r.ok())
+            .collect();
+        let pending: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE embedding IS NULL AND deleted_at IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(estr)?;
+        (threshold, ids, vecs, links, pending)
+    };
+
+    let n = ids.len();
+    let idx_of: HashMap<&str, usize> =
+        ids.iter().enumerate().map(|(i, id)| (id.as_str(), i)).collect();
+    // A correction is honored when its anchor resolves inside the working set
+    // (or is deliberately NULL). Dangling anchors fall back to automatic.
+    let corrected_idx: HashMap<usize, Option<usize>> = links
+        .iter()
+        .filter_map(|(note, anchor)| {
+            let i = *idx_of.get(note.as_str())?;
+            match anchor {
+                None => Some((i, None)),
+                Some(a) => idx_of.get(a.as_str()).map(|&j| (i, Some(j))),
+            }
+        })
+        .collect();
+
+    let mut parent: Vec<usize> = (0..n).collect();
+    for i in 0..n {
+        if corrected_idx.contains_key(&i) {
+            continue; // hand-placed: cosine doesn't get a vote
+        }
+        for j in (i + 1)..n {
+            if corrected_idx.contains_key(&j) {
+                continue;
+            }
+            if embed::cosine(&vecs[i], &vecs[j]) >= threshold {
+                let (ri, rj) = (uf_find(&mut parent, i), uf_find(&mut parent, j));
+                if ri != rj {
+                    parent[rj] = ri;
+                }
+            }
+        }
+    }
+    for (&i, anchor) in &corrected_idx {
+        if let Some(j) = anchor {
+            let (ri, rj) = (uf_find(&mut parent, i), uf_find(&mut parent, *j));
+            if ri != rj {
+                parent[rj] = ri;
+            }
+        }
+    }
+
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        let root = uf_find(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+
+    let db = state.db.lock().unwrap();
+    let mut clusters: Vec<BoardCluster> = Vec::new();
+    let mut loose_ids: Vec<String> = Vec::new();
+    for members in groups.into_values() {
+        if members.len() < 2 {
+            loose_ids.push(ids[members[0]].clone());
+            continue;
+        }
+        // Anchor = most central member (max mean cosine to the rest) — the
+        // steadiest identity a computed cluster can have.
+        let anchor = members
+            .iter()
+            .copied()
+            .max_by(|&a, &b| {
+                let score = |x: usize| -> f32 {
+                    members
+                        .iter()
+                        .filter(|&&m| m != x)
+                        .map(|&m| embed::cosine(&vecs[x], &vecs[m]))
+                        .sum()
+                };
+                score(a)
+                    .partial_cmp(&score(b))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(members[0]);
+        let member_ids: Vec<String> = members.iter().map(|&i| ids[i].clone()).collect();
+        let mut notes = db::get_notes_by_ids_excerpt(&db, &member_ids).map_err(eanyhow)?;
+        notes.sort_by_key(|n| std::cmp::Reverse(n.updated_at));
+
+        // Label: the tag most members share — tags are the strongest topic
+        // signal around (same reasoning as the auto-arrange prompt). Falls
+        // back to the central note's title.
+        let mut tag_counts: HashMap<&str, usize> = HashMap::new();
+        for note in &notes {
+            for t in &note.tags {
+                *tag_counts.entry(t.tag.as_str()).or_default() += 1;
+            }
+        }
+        let label_tag = tag_counts
+            .iter()
+            .filter(|(_, &c)| c >= 2)
+            .max_by_key(|(tag, &c)| (c, std::cmp::Reverse(tag.to_string())))
+            .map(|(tag, _)| tag.to_string());
+        let label = label_tag.clone().unwrap_or_else(|| {
+            let anchor_note = notes
+                .iter()
+                .find(|nn| nn.id == ids[anchor])
+                .unwrap_or(&notes[0]);
+            let t = anchor_note.title.trim();
+            if t.is_empty() {
+                "Untitled cluster".to_string()
+            } else {
+                t.chars().take(40).collect()
+            }
+        });
+        clusters.push(BoardCluster {
+            anchor_id: ids[anchor].clone(),
+            label,
+            label_tag,
+            notes,
+        });
+    }
+    // Biggest clusters first — the strongest themes lead the board.
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.notes.len()));
+
+    let mut loose = db::get_notes_by_ids_excerpt(&db, &loose_ids).map_err(eanyhow)?;
+    loose.sort_by_key(|n| std::cmp::Reverse(n.updated_at));
+
+    let corrected = corrected_idx.keys().map(|&i| ids[i].clone()).collect();
+    Ok(BoardData {
+        clusters,
+        loose,
+        corrected,
+        pending,
+    })
+}
+
+/// Record a hand placement: `anchor_id = Some(..)` pins the note to that
+/// note's cluster, `None` keeps it deliberately loose. Latest correction wins.
+#[tauri::command]
+pub async fn set_board_link(
+    app: AppHandle,
+    note_id: String,
+    anchor_id: Option<String>,
+) -> CmdResult<()> {
+    if anchor_id.as_deref() == Some(note_id.as_str()) {
+        return Err("A note can't anchor itself".into());
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "INSERT INTO board_links(note_id, anchor_id, created_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(note_id) DO UPDATE SET anchor_id = excluded.anchor_id,
+                                            created_at = excluded.created_at",
+        params![note_id, anchor_id, now_ms()],
+    )
+    .map_err(estr)?;
+    Ok(())
+}
+
+/// Revert a note to automatic placement.
+#[tauri::command]
+pub async fn clear_board_link(app: AppHandle, note_id: String) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute("DELETE FROM board_links WHERE note_id = ?1", params![note_id])
+        .map_err(estr)?;
+    Ok(())
+}
+
+const STALE_AFTER_DAYS: i64 = 30;
+const STALE_RECENT_DAYS: i64 = 14;
+const STALE_MAX_RESULTS: usize = 12;
+const STALE_RECENT_CAP: usize = 20;
+
+/// The anti-forgetting feed: notes untouched for 30+ days, ranked by how
+/// close they sit to the centroid of what you've worked on lately. Falls back
+/// to longest-forgotten ordering until embeddings can say something smarter.
+#[tauri::command]
+pub async fn stale_ideas(app: AppHandle) -> CmdResult<Vec<Note>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let now = now_ms();
+    let stale_cutoff = now - STALE_AFTER_DAYS * 86_400_000;
+    let recent_cutoff = now - STALE_RECENT_DAYS * 86_400_000;
+    let floor = db::load_settings(&db).semantic_search_threshold.clamp(0.0, 1.0);
+
+    // Centroid of recent work — what "today" is about, as a vector.
+    let mut stmt = db
+        .prepare(
+            "SELECT embedding FROM notes
+             WHERE embedding IS NOT NULL AND deleted_at IS NULL AND updated_at >= ?1
+             ORDER BY updated_at DESC LIMIT ?2",
+        )
+        .map_err(estr)?;
+    let recent: Vec<Vec<f32>> = stmt
+        .query_map(params![recent_cutoff, STALE_RECENT_CAP as i64], |r| {
+            r.get::<_, Vec<u8>>(0)
+        })
+        .map_err(estr)?
+        .filter_map(|r| r.ok())
+        .map(|b| embed::from_blob(&b))
+        .collect();
+    let centroid: Option<Vec<f32>> = if recent.is_empty() {
+        None
+    } else {
+        let dim = recent[0].len();
+        let mut c = vec![0.0f32; dim];
+        for v in &recent {
+            for (ci, vi) in c.iter_mut().zip(v.iter()) {
+                *ci += vi;
+            }
+        }
+        for ci in c.iter_mut() {
+            *ci /= recent.len() as f32;
+        }
+        Some(c)
+    };
+
+    let Some(centroid) = centroid else {
+        // No recent embedded work to compare against — surface the longest
+        // forgotten notes instead of nothing.
+        let mut stmt = db
+            .prepare(&format!(
+                "SELECT id FROM notes WHERE deleted_at IS NULL AND updated_at < ?1
+                 ORDER BY updated_at ASC LIMIT {STALE_MAX_RESULTS}"
+            ))
+            .map_err(estr)?;
+        let ids: Vec<String> = stmt
+            .query_map(params![stale_cutoff], |r| r.get(0))
+            .map_err(estr)?
+            .filter_map(|r| r.ok())
+            .collect();
+        return db::get_notes_by_ids_excerpt(&db, &ids).map_err(eanyhow);
+    };
+
+    let mut stmt = db
+        .prepare(
+            "SELECT id, embedding FROM notes
+             WHERE embedding IS NOT NULL AND deleted_at IS NULL AND updated_at < ?1",
+        )
+        .map_err(estr)?;
+    let mut scored: Vec<(String, f32)> = stmt
+        .query_map(params![stale_cutoff], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+        })
+        .map_err(estr)?
+        .filter_map(|r| r.ok())
+        .map(|(id, blob)| {
+            let score = embed::cosine(&centroid, &embed::from_blob(&blob));
+            (id, score)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, s)| *s >= floor);
+    scored.truncate(STALE_MAX_RESULTS);
+
+    let ids: Vec<String> = scored.iter().map(|(id, _)| id.clone()).collect();
+    let mut notes = db::get_notes_by_ids_excerpt(&db, &ids).map_err(eanyhow)?;
+    let score_map: HashMap<&str, f32> = scored.iter().map(|(id, s)| (id.as_str(), *s)).collect();
+    for note in notes.iter_mut() {
+        note.score = score_map.get(note.id.as_str()).copied();
+    }
+    Ok(notes)
 }
 
 // ---------------------------------------------------------------- folders & tags

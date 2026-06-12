@@ -7,6 +7,7 @@ import {
   FileText,
   FolderInput,
   Import,
+  LayoutGrid,
   Loader2,
   PanelLeft,
   Plus,
@@ -78,6 +79,15 @@ function buildCommands(close: () => void): Command[] {
       run: () => {
         close();
         useStore.getState().toggleSidebar();
+      },
+    },
+    {
+      label: "Open the Board",
+      hint: "⌘⇧B",
+      icon: <LayoutGrid size={14} />,
+      run: () => {
+        close();
+        useStore.getState().setBoardOpen(true);
       },
     },
     {

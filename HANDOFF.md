@@ -81,7 +81,7 @@ UI conventions: no borders between regions — tone shifts + whitespace; popover
 
 ## Settings
 
-`AppSettings` (models.rs ↔ types.ts) is one JSON blob in the `settings` table, `#[serde(default)]` so adding fields is backward-compatible — add to struct + `Default` impl + types.ts + SettingsModal. Backend-owned: automation, debounces, LLM backend config, `auto_tag_max`, `extract_actions`, `notify_in_app`, `notify_system`, similarity thresholds (`semantic_search_threshold` 0.25 — search + smart leg, `related_notes_threshold` 0.35, `similar_merge_threshold` 0.80 — Tidy up). Frontend-only (localStorage): theme, sidebar state. Theme picker applies instantly; everything else needs Save.
+`AppSettings` (models.rs ↔ types.ts) is one JSON blob in the `settings` table, `#[serde(default)]` so adding fields is backward-compatible — add to struct + `Default` impl + types.ts + SettingsModal. Backend-owned: automation, debounces, LLM backend config, `auto_tag_max`, `extract_actions`, `notify_in_app`, `notify_system`, similarity thresholds (`semantic_search_threshold` 0.25 — search + smart leg, `related_notes_threshold` 0.35, `similar_merge_threshold` 0.80 — Tidy up, `board_cluster_threshold` 0.45 — Board clusters). Frontend-only (localStorage): theme, sidebar state, board mode (`nn.boardMode`). Theme picker applies instantly; everything else needs Save.
 
 ## Data & invariants
 
@@ -98,6 +98,8 @@ DB: `~/Library/Application Support/com.nexusnote.app/nexusnote.db` (WAL). Migrat
 **Per-feature AI toggles** in `AppSettings`: `auto_tag_max` (0=off), `auto_title`, `suggest_folders`, `extract_actions` — gate the worker pipeline and manual Organize; explicit actions (bulk auto-title, merge) stay available whenever an LLM backend is configured.
 
 Editor extras: TaskList/TaskItem (GFM `- [ ]`), `SlashCommands` ("/" insert menu, plain-DOM dropdown via @tiptap/suggestion), `TermHighlight` decorations (search click-through + ⌘F find bar), clipboard image paste (`save_image_bytes`, base64). Sidebar: pinned section, drag-drop note/folder moves (`move_folder` refuses cycles), right-click ContextMenu, Trash section, "Tidy up similar notes" (`find_similar_notes` union-find at the tunable `similar_merge_threshold` (default 0.80) + `merge_notes`).
+
+**The Board** (`Board.tsx`, ⌘⇧B): replaces the editor pane while `boardOpen`; opening any note closes it (`selectNote`/`createNote` set `boardOpen: false`). Clusters come from `board_clusters` — cosine union-find at `board_cluster_threshold` over the ≤400 most recent embedded notes, labels from members' shared tags (the `label_tag` field marks when the label is a real tag). **Correction invariant**: a `board_links` row (note → anchor, NULL = stay loose) means the user placed that note — the clustering pass must drop the note's cosine edges and union it with its anchor instead, so no re-tidy can move it. Corrections only clear via "Let AI place it again", toast Undo, or cascade on note delete. Dropping onto a tag-labeled cluster also adds that tag (source `manual`, so `ai_retag_all` won't wipe it). `stale_ideas` ranks 30-day-untouched notes against the centroid of the last 14 days' embeddings (floor = `semantic_search_threshold`).
 
 **Do not rename** the bundle `identifier` (`com.nexusnote.app`) or the db filename — either would orphan users' data. Rebrand was deliberately limited to `productName`, window title, and UI text.
 

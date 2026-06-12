@@ -5,6 +5,7 @@ import type {
   ActionItem,
   ActionSort,
   AppSettings,
+  BoardMode,
   Folder,
   Note,
   QueueStatus,
@@ -63,6 +64,10 @@ interface Store {
   similarOpen: boolean;
   /** "Auto-arrange unfiled notes" review modal. */
   arrangeOpen: boolean;
+  /** The Board replaces the editor pane while open. */
+  boardOpen: boolean;
+  /** Which curated feed the Board shows (persisted to localStorage). */
+  boardMode: BoardMode;
   sidebarCollapsed: boolean;
   theme: string;
   /** Editor line-number gutter (display-only, persisted to localStorage). */
@@ -103,6 +108,8 @@ interface Store {
   setPaletteOpen: (b: boolean) => void;
   setSimilarOpen: (b: boolean) => void;
   setArrangeOpen: (b: boolean) => void;
+  setBoardOpen: (b: boolean) => void;
+  setBoardMode: (m: BoardMode) => void;
   /** Import .md/.txt files (or folders of them) and toast the outcome. */
   importNotePaths: (paths: string[]) => Promise<void>;
   toggleSidebar: () => void;
@@ -136,6 +143,10 @@ export const useStore = create<Store>((set, get) => ({
   paletteOpen: false,
   similarOpen: false,
   arrangeOpen: false,
+  boardOpen: false,
+  boardMode: (["clusters", "recent", "stale", "pinned"] as const).find(
+    (m) => m === localStorage.getItem("nn.boardMode"),
+  ) ?? "clusters",
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
@@ -191,7 +202,8 @@ export const useStore = create<Store>((set, get) => ({
     }
     try {
       const note = await api.getNote(id);
-      set({ selectedNote: note });
+      // Opening a note always lands in the editor — the Board steps aside.
+      set({ selectedNote: note, boardOpen: false });
       recordRecent(id);
     } catch (e) {
       get().toast(String(e), "error");
@@ -204,7 +216,7 @@ export const useStore = create<Store>((set, get) => ({
       folderId !== undefined ? folderId : view.kind === "folder" ? view.key : null;
     try {
       const note = await api.createNote(target);
-      set((s) => ({ notes: [note, ...s.notes], selectedNote: note }));
+      set((s) => ({ notes: [note, ...s.notes], selectedNote: note, boardOpen: false }));
       recordRecent(note.id);
     } catch (e) {
       get().toast(String(e), "error");
@@ -217,7 +229,7 @@ export const useStore = create<Store>((set, get) => ({
     try {
       const note = await api.createNote(null);
       const updated = await api.updateNote(note.id, trimmed, "");
-      set((s) => ({ notes: [updated, ...s.notes], selectedNote: updated }));
+      set((s) => ({ notes: [updated, ...s.notes], selectedNote: updated, boardOpen: false }));
       recordRecent(updated.id);
     } catch (e) {
       get().toast(String(e), "error");
@@ -288,6 +300,11 @@ export const useStore = create<Store>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSimilarOpen: (similarOpen) => set({ similarOpen }),
   setArrangeOpen: (arrangeOpen) => set({ arrangeOpen }),
+  setBoardOpen: (boardOpen) => set({ boardOpen }),
+  setBoardMode: (boardMode) => {
+    localStorage.setItem("nn.boardMode", boardMode);
+    set({ boardMode });
+  },
 
   importNotePaths: async (paths) => {
     const { toast } = get();

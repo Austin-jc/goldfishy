@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Copy,
   Inbox,
+  LayoutGrid,
   Loader2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -320,6 +321,7 @@ export default function Sidebar() {
         )}
         <span className="ml-auto flex items-center gap-0.5">
           <ActionsBell />
+          <BoardButton />
           <button
             onClick={() => setSettingsOpen(true)}
             className="cursor-pointer rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-stone-800 hover:text-stone-200"
@@ -806,6 +808,24 @@ function TrashRow({ note, onRestore }: { note: Note; onRestore: () => void }) {
         </span>
       </span>
     </div>
+  );
+}
+
+function BoardButton() {
+  const boardOpen = useStore((s) => s.boardOpen);
+  const setBoardOpen = useStore((s) => s.setBoardOpen);
+  return (
+    <button
+      onClick={() => setBoardOpen(!boardOpen)}
+      className={`cursor-pointer rounded-lg p-1.5 transition-colors ${
+        boardOpen
+          ? "bg-clay-600/20 text-clay-300"
+          : "text-stone-500 hover:bg-stone-800 hover:text-stone-200"
+      }`}
+      title="Board — your notes as a wall of cards (⌘⇧B)"
+    >
+      <LayoutGrid size={15} />
+    </button>
   );
 }
 

@@ -6,6 +6,7 @@ import type {
   ArrangeGroup,
   ArrangeMove,
   BackupResult,
+  BoardData,
   CollectionSummary,
   Folder,
   ImportResult,
@@ -65,6 +66,14 @@ export const api = {
   relatedNotes: (noteId: string) => invoke<Note[]>("related_notes", { noteId }),
   findSimilarNotes: () => invoke<Note[][]>("find_similar_notes"),
   mergeNotes: (noteIds: string[]) => invoke<Note>("merge_notes", { noteIds }),
+
+  // board
+  boardClusters: () => invoke<BoardData>("board_clusters"),
+  /** anchorId null = keep the note deliberately loose. */
+  setBoardLink: (noteId: string, anchorId: string | null) =>
+    invoke<void>("set_board_link", { noteId, anchorId }),
+  clearBoardLink: (noteId: string) => invoke<void>("clear_board_link", { noteId }),
+  staleIdeas: () => invoke<Note[]>("stale_ideas"),
 
   // folders & tags
   listFolders: () => invoke<Folder[]>("list_folders"),

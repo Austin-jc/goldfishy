@@ -64,6 +64,30 @@ pub struct ArrangeMove {
     pub folder_name: String,
 }
 
+/// One semantic cluster on the Board. `anchor_id` is the most central member
+/// — drag-corrections attach to it so they survive re-clustering.
+#[derive(Serialize, Clone, Debug)]
+pub struct BoardCluster {
+    pub anchor_id: String,
+    pub label: String,
+    /// Set when the label is a real tag — dropping a note here also nudges
+    /// that tag onto it, so the correction compounds (search, filters).
+    pub label_tag: Option<String>,
+    pub notes: Vec<Note>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct BoardData {
+    /// Multi-note clusters, biggest first.
+    pub clusters: Vec<BoardCluster>,
+    /// Singletons — embedded notes that didn't cluster with anything.
+    pub loose: Vec<Note>,
+    /// Note ids placed by hand (a board_links row) — badged in the UI.
+    pub corrected: Vec<String>,
+    /// Live notes still waiting for an embedding (not on the board yet).
+    pub pending: i64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct ImportResult {
     /// Notes created.
@@ -152,6 +176,9 @@ pub struct AppSettings {
     pub related_notes_threshold: f32,
     /// Cosine floor for "Tidy up" merge candidates.
     pub similar_merge_threshold: f32,
+    /// Cosine floor for Board clusters — looser than merge (topical groups,
+    /// not duplicates), tighter than related-notes.
+    pub board_cluster_threshold: f32,
 }
 
 impl Default for AppSettings {
@@ -179,6 +206,7 @@ impl Default for AppSettings {
             semantic_search_threshold: 0.25,
             related_notes_threshold: 0.35,
             similar_merge_threshold: 0.80,
+            board_cluster_threshold: 0.45,
         }
     }
 }

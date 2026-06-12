@@ -45,6 +45,13 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Auto-arrange unfiled notes** — one batched LLM call plans a topical folder for everything at root (generic buckets banned in prompt + code; tags as topic hints; confident suggestions favored over none since the plan is staged); fully editable review modal — per-note destination picker, typed new folders, "no suggestion" section for manual filing; nothing moves until Apply. Filed notes are deliberately left alone for now.
 - [x] **Tunable prompts** — Settings → Prompts exposes every task's text fields + reply cap with per-task reset; overrides persist in the settings table and win over `prompts/prompts.json` defaults at run time (schemas/limits stay code-owned; bench measures defaults).
 
+## The Board (bulletin-board grid view)
+
+- [x] **Board view** — full-pane wall of note cards (⌘⇧B, sidebar button, palette) with four feeds: Clusters, Recent, Stale ideas, Pinned. Cards are plain excerpts + tags (no editor instances), so hundreds render cheaply.
+- [x] **Semantic clusters** — cosine union-find over embeddings at the tunable `board_cluster_threshold` (default 0.45); labels derived from members' shared tags (no LLM call); singletons in a Loose section; working set capped at the 400 most recent embedded notes.
+- [x] **Sticky drag-corrections** — dragging a card to another cluster stores a must-link in `board_links` (note → cluster anchor; NULL = deliberately loose). Corrections are semantic, not positional: re-tidies honor them (the human's placement always wins), the cluster's tag is nudged onto the note, and a corrected card is badged with "Let AI place it again" to revert. Undo on the toast reverses both link and tag.
+- [x] **Stale ideas** — `stale_ideas` command: notes untouched 30+ days ranked by cosine against the centroid of the last 14 days' work; falls back to longest-forgotten until embeddings exist. The anti-forgetting feed.
+
 ## Research-backed top picks (June 2026, from docs/improvements.md)
 
 - [x] **Prompt single source + versioning** (AI-3) — `prompts/prompts.json` shared by `ai.rs` and the bench; `version` stamped into bench results.

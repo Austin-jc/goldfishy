@@ -47,7 +47,11 @@ export default function SettingsModal() {
     setLocal((prev) => ({ ...prev, [key]: value }));
 
   const setThreshold = (
-    key: "semantic_search_threshold" | "related_notes_threshold" | "similar_merge_threshold",
+    key:
+      | "semantic_search_threshold"
+      | "related_notes_threshold"
+      | "similar_merge_threshold"
+      | "board_cluster_threshold",
     raw: string,
   ) => set(key, Math.min(1, Math.max(0, Number(raw) || 0)));
 
@@ -464,7 +468,7 @@ export default function SettingsModal() {
                 Cosine-similarity floors (0–1). Lower lets broader, looser matches
                 through; higher keeps only near-misses. Defaults in parentheses.
               </p>
-              <div className="flex gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <Field label="Semantic search (0.25)" className="flex-1">
                   <input
                     type="number"
@@ -499,6 +503,18 @@ export default function SettingsModal() {
                     onChange={(e) => setThreshold("similar_merge_threshold", e.target.value)}
                     className={inputCls}
                     title="How similar two notes must be before Tidy up proposes merging them"
+                  />
+                </Field>
+                <Field label="Board clusters (0.45)" className="flex-1">
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={local.board_cluster_threshold}
+                    onChange={(e) => setThreshold("board_cluster_threshold", e.target.value)}
+                    className={inputCls}
+                    title="How related notes must be to share a Board cluster — lower makes bigger, broader piles"
                   />
                 </Field>
               </div>
