@@ -3,6 +3,7 @@ import {
   BubbleMenu,
   EditorContent,
   useEditor,
+  useEditorState,
   type Editor as TiptapEditor,
 } from "@tiptap/react";
 import { isTextSelection } from "@tiptap/core";
@@ -215,6 +216,9 @@ function EditorInner({ noteId }: { noteId: string }) {
       },
     },
     onUpdate: () => scheduleSave(),
+    // Don't re-render the whole editor pane per keystroke; the few spots
+    // that need live transaction state subscribe via useEditorState.
+    shouldRerenderOnTransaction: false,
   });
   editorRef.current = editor;
 
@@ -835,7 +839,14 @@ function HistoryPopover({
 function FindBar({ editor, onClose }: { editor: TiptapEditor; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const count = query ? findTermRanges(editor.state.doc, [query]).length : 0;
+  // Subscribed, not read at render: the pane no longer re-renders per
+  // transaction, and edits while the bar is open must keep the count honest.
+  const count =
+    useEditorState({
+      editor,
+      selector: ({ editor: e }) =>
+        query ? findTermRanges(e.state.doc, [query]).length : 0,
+    }) ?? 0;
 
   const apply = (q: string, idx: number) => {
     editor.commands.setHighlightTerms(q ? [q] : [], idx);
@@ -1055,6 +1066,26 @@ function folderOptions(folders: { id: string; name: string; parent_id: string | 
 
 /** Floating contextual toolbar — appears over the current text selection. */
 function SelectionMenu({ editor }: { editor: TiptapEditor }) {
+  // The editor pane no longer re-renders per transaction
+  // (shouldRerenderOnTransaction: false) — subscribe to just the active
+  // states this menu shows; deep-equal means no-op transactions don't render.
+  const on = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      bold: e.isActive("bold"),
+      italic: e.isActive("italic"),
+      strike: e.isActive("strike"),
+      code: e.isActive("code"),
+      h1: e.isActive("heading", { level: 1 }),
+      h2: e.isActive("heading", { level: 2 }),
+      bulletList: e.isActive("bulletList"),
+      orderedList: e.isActive("orderedList"),
+      taskList: e.isActive("taskList"),
+      blockquote: e.isActive("blockquote"),
+      codeBlock: e.isActive("codeBlock"),
+    }),
+  });
+
   const Btn = ({
     active,
     onClick,
@@ -1093,28 +1124,28 @@ function SelectionMenu({ editor }: { editor: TiptapEditor }) {
       <div className="flex items-center gap-0.5 rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/60">
         <Btn
           title="Bold"
-          active={editor.isActive("bold")}
+          active={on.bold}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <Bold size={13} />
         </Btn>
         <Btn
           title="Italic"
-          active={editor.isActive("italic")}
+          active={on.italic}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <Italic size={13} />
         </Btn>
         <Btn
           title="Strikethrough"
-          active={editor.isActive("strike")}
+          active={on.strike}
           onClick={() => editor.chain().focus().toggleStrike().run()}
         >
           <Strikethrough size={13} />
         </Btn>
         <Btn
           title="Inline code"
-          active={editor.isActive("code")}
+          active={on.code}
           onClick={() => editor.chain().focus().toggleCode().run()}
         >
           <Code size={13} />
@@ -1122,14 +1153,14 @@ function SelectionMenu({ editor }: { editor: TiptapEditor }) {
         <span className="mx-1 h-4 w-px bg-stone-800" />
         <Btn
           title="Heading 1"
-          active={editor.isActive("heading", { level: 1 })}
+          active={on.h1}
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
         >
           <Heading1 size={13} />
         </Btn>
         <Btn
           title="Heading 2"
-          active={editor.isActive("heading", { level: 2 })}
+          active={on.h2}
           onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         >
           <Heading2 size={13} />
@@ -1137,35 +1168,35 @@ function SelectionMenu({ editor }: { editor: TiptapEditor }) {
         <span className="mx-1 h-4 w-px bg-stone-800" />
         <Btn
           title="Bullet list"
-          active={editor.isActive("bulletList")}
+          active={on.bulletList}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
           <List size={13} />
         </Btn>
         <Btn
           title="Numbered list"
-          active={editor.isActive("orderedList")}
+          active={on.orderedList}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
           <ListOrdered size={13} />
         </Btn>
         <Btn
           title="Task list (checkboxes)"
-          active={editor.isActive("taskList")}
+          active={on.taskList}
           onClick={() => editor.chain().focus().toggleTaskList().run()}
         >
           <ListTodo size={13} />
         </Btn>
         <Btn
           title="Quote"
-          active={editor.isActive("blockquote")}
+          active={on.blockquote}
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         >
           <Quote size={13} />
         </Btn>
         <Btn
           title="Code block"
-          active={editor.isActive("codeBlock")}
+          active={on.codeBlock}
           onClick={() => toggleUnifiedCodeBlock(editor)}
         >
           <SquareCode size={13} />
