@@ -27,6 +27,13 @@ When you open GoldFishy you'll see two areas:
 2. Type a title at the top, then click below it and start writing.
 3. That's it — **notes save themselves automatically** as you type. There is no Save button because you'll never need one.
 
+A few quiet extras while you write:
+
+- A **word count** (and a read time, once a note is long enough) sits in the bottom-right corner of the page.
+- **⌘J** opens **today's note** — a dated page in a Journal folder, created the first time you ask. Great for a running daily log.
+- **⌘⇧F** is **focus mode**: everything except the page disappears until you press it again (or click the corner button).
+- The clock icon at the top of a note is its **version history**. Click any checkpoint to see exactly what restoring it would change — added lines in green, removed lines in red — before you commit to it.
+
 ### Making text look nice
 
 Select some text and a small floating toolbar appears right above it (bold, headings, lists, quotes, code…). Selecting several lines and clicking the code-block button turns the whole selection into a single highlighted code block. You can also use these typing shortcuts — they transform as you type:
@@ -107,7 +114,7 @@ Once AI is enabled (next section), GoldFishy can:
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
 - 🪄 **Auto-arrange unfiled notes** — got a pile of notes sitting outside any folder? Click **Auto-arrange unfiled notes** in the sidebar (it appears when you have a few). The planning happens **in the background** — keep writing — and a toast (plus a green **Review auto-arrange plan** link in the sidebar) tells you when the proposal is ready. The AI proposes a folder for each note — only when the folder genuinely matches the note's topic, suggesting a new folder when several notes clearly belong together, and honestly saying "no suggestion" otherwise. The whole plan is yours to edit: untick anything, **drag a note from one folder to another** (or onto the no-suggestion box to leave it out), click **change** on any note to send it to a different folder (or type a brand-new folder name), and file the no-suggestion notes yourself from the same screen. Nothing moves until you click **Move**. Same deal for **Tidy up similar notes** — the scan and the merges run in the background and you review every suggestion.
 - • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and a preview of the tidied bullet points appears — click **Keep** to apply it (the old text is saved to History) or **Discard** to keep your note as-is.
-- ✨ **Note summaries** — the app keeps a short AI summary of every note as you write, shown on Board stickies and in the sidebar's hover preview. Pick the shape in **Settings → Note Summaries & Previews**: a one-line **blurb**, key-point **bullets**, or the note's **to-dos** — and choose per surface whether to show the summary or the raw note text. Right-click a Board card → **Refresh summary** to redo one on demand.
+- ✨ **Note summaries** — the app keeps a short AI summary of every note as you write, shown on Board stickies and in the sidebar's hover preview. Pick the shape in **Settings → Note Summaries & Previews**: a one-line **blurb**, key-point **bullets**, or the note's **to-dos** — and choose per surface whether to show the summary or the raw note text. Right-click a Board card → **Refresh summary** to redo one on demand. Notes that don't have a summary yet? A **"Summarize N notes without summaries"** link appears near the top of the sidebar (also in ⌘K) — click it and watch the progress in the footer.
 - 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it. It runs in the background too — the bar pops open (or a toast appears, if you've navigated away) when it's done.
 - ✅ **Action items & reminders** — the AI also spots tasks and follow-ups in your notes ("call the dentist", "send the report by Friday") and proposes them in the **Actions panel** (the bell at the top of the left panel). Nothing is scheduled until you accept it. You can also highlight any text in a note and right-click it → **Add as action item** to file it yourself, instantly.
 
