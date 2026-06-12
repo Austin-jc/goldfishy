@@ -1094,9 +1094,25 @@ function QueueFooter() {
     if (!busy) setOpen(false);
   }, [busy]);
 
+  // Live countdown while a post-error pause is active (the worker is silent
+  // during the pause, so the frontend ticks the clock itself).
+  const [now, setNow] = useState(() => Date.now());
+  const cooldownUntil = Math.max(
+    queue?.embed_cooldown_until ?? 0,
+    queue?.llm_cooldown_until ?? 0,
+  );
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [cooldownUntil]);
+
   if (!queue) return null;
 
   const pending = queue.embed_pending + queue.llm_pending;
+  const llmCooldownS = Math.ceil((queue.llm_cooldown_until - now) / 1000);
+  const embedCooldownS = Math.ceil((queue.embed_cooldown_until - now) / 1000);
   const statusText =
     queue.embedder_state === "downloading"
       ? "Downloading semantic model… (first run)"
@@ -1106,13 +1122,17 @@ function QueueFooter() {
           ? "Semantic engine error — keyword search still works"
           : queue.current_activity
             ? queue.current_activity
-            : queue.sweep_active
-              ? "Re-indexing…"
-              : pending > 0
-                ? "AI engine working…"
-                : total > 0
-                  ? `${total} note${total === 1 ? "" : "s"} queued`
-                  : "All notes up to date";
+            : llmCooldownS > 0 && queue.llm_stale + queue.llm_pending > 0
+              ? `AI paused after an error — retrying in ${llmCooldownS}s`
+              : embedCooldownS > 0 && queue.embed_stale + queue.embed_pending > 0
+                ? `Indexing paused after an error — retrying in ${embedCooldownS}s`
+                : queue.sweep_active
+                  ? "Re-indexing…"
+                  : pending > 0
+                    ? "AI engine working…"
+                    : total > 0
+                      ? `${total} note${total === 1 ? "" : "s"} queued`
+                      : "All notes up to date";
 
   return (
     <div className="relative px-3 pb-2 pt-1">

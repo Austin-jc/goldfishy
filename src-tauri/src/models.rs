@@ -139,6 +139,10 @@ pub struct QueueStatus {
     pub current_activity: Option<String>,
     /// Note the live activity targets, when it's a single note.
     pub current_note_id: Option<String>,
+    /// Post-error pause deadlines (ms epoch; 0 / past = not paused). The
+    /// frontend counts these down so the retry plan is visible, not silent.
+    pub embed_cooldown_until: i64,
+    pub llm_cooldown_until: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -83,6 +83,9 @@ export interface QueueStatus {
   current_activity: string | null;
   /** Note the live activity targets, when it's a single note. */
   current_note_id: string | null;
+  /** Post-error pause deadlines (ms epoch; 0 / past = not paused). */
+  embed_cooldown_until: number;
+  llm_cooldown_until: number;
 }
 
 export interface AppSettings {

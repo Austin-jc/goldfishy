@@ -63,7 +63,9 @@ export default function App() {
         useStore.getState().setQueue(e.payload);
       }),
       listen<string>("worker-error", (e) => {
-        useStore.getState().toast(e.payload, "error");
+        // The payload names the failing pipeline; add the recovery plan so
+        // the toast isn't a dead end (the footer counts the pause down live).
+        useStore.getState().toast(`${e.payload} — paused, retrying in 60s`, "error");
       }),
       listen("sweep-done", () => {
         useStore.getState().toast("Sync / re-index complete", "success");

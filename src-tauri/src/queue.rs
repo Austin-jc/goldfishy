@@ -52,6 +52,8 @@ pub fn queue_status(app: &AppHandle) -> Result<QueueStatus> {
         embedder_state: crate::state::embedder_phase::as_str(phase).to_string(),
         current_activity: activity.as_ref().map(|(label, _)| label.clone()),
         current_note_id: activity.and_then(|(_, id)| id),
+        embed_cooldown_until: state.embed_cooldown_until.load(Ordering::Relaxed),
+        llm_cooldown_until: state.llm_cooldown_until.load(Ordering::Relaxed),
     };
     Ok(status)
 }
