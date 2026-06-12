@@ -646,6 +646,7 @@ function EditorInner({ noteId }: { noteId: string }) {
       </div>
 
       {editor && <SelectionMenu editor={editor} />}
+      {editor && <EditorStats editor={editor} />}
 
       {selMenu && (
         <ContextMenu
@@ -1062,6 +1063,28 @@ function folderOptions(folders: { id: string; name: string; parent_id: string | 
   };
   walk(null, 0);
   return out;
+}
+
+/** Quiet word-count / read-time stat in the editor pane's bottom corner.
+ *  Read time appears once a note is long enough for it to mean anything. */
+function EditorStats({ editor }: { editor: TiptapEditor }) {
+  const words =
+    useEditorState({
+      editor,
+      selector: ({ editor: e }) =>
+        e.state.doc
+          .textBetween(0, e.state.doc.content.size, " ")
+          .split(/\s+/)
+          .filter(Boolean).length,
+    }) ?? 0;
+  if (words === 0) return null;
+  const minutes = Math.max(1, Math.round(words / 200));
+  return (
+    <span className="pointer-events-none absolute bottom-2 right-4 z-10 rounded-md bg-stone-900/80 px-1.5 py-0.5 text-[10px] tabular-nums text-stone-600">
+      {words.toLocaleString()} word{words === 1 ? "" : "s"}
+      {words >= 200 ? ` · ${minutes} min read` : ""}
+    </span>
+  );
 }
 
 /** Floating contextual toolbar — appears over the current text selection. */
