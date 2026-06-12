@@ -2,6 +2,8 @@
 
 Findings from a research pass (June 2026) across three areas: AI-integration best practices, lessons from leading note-taking apps, and performance — each filtered for applicability to GoldFishy and verified against the actual code. Treat this as a menu: promote items into `ROADMAP.md` when committed; delete items we decide against (note why).
 
+A second audit + research round (June 12, 2026) lives in [Round 2](#round-2-june-12-2026) below, ending with the curated [Next top 10](#next-top-10-june-2026).
+
 ## Top picks (highest value across all sections)
 
 1. ✅ **Single source of truth for prompts + prompt versioning** (AI-3) — replaces the error-prone `ai.rs` ↔ `bench/src/prompts.ts` hand-mirror. *Adopting this changes golden rule 5 in `conventions.md`.* — **done:** `prompts/prompts.json` + `prompts.rs` loader; version stamped into bench results.
@@ -108,3 +110,63 @@ Verified against the code at the cited locations. Ordered by impact-for-effort.
 | PERF-18 | Sidebar virtualization — only matters past ~1–2k visible rows once PERF-3/4 land; fights the tree/drag-drop design | `Sidebar.tsx` 470–488 | Med at large scale only | L |
 
 **Checked and already fine** (don't re-litigate): dev-profile opt-levels; embedder warm-up/phase plumbing; pre-created capture window; async `queue_status` + action commands; the 600 ms autosave architecture itself; the `diff.rs` significant-change gate; FTS5 external-content + triggers; embed batch sizing; 120 ms keyword-search debounce; editor remount per note (`key={noteId}`); WAL + busy_timeout + FK pragmas.
+
+---
+
+# Round 2 (June 12, 2026)
+
+Second pass: a fresh performance audit (all open PERF items re-verified against current code, plus new findings), a quality-of-life friction audit of every component, and online research on UI/UX patterns for notepad-class apps. Sources cited inline.
+
+## Research notes (what the field converged on)
+
+- **AI must be ignorable.** The 2026 consensus across note-app reviews: "the best AI feature is the one you can ignore completely until you actively seek it out" ([Sugggest 2026 landscape](https://sugggest.com/blog/best-note-taking-apps-2026)). GoldFishy's background-queue + review-before-apply model is exactly this — protect it as new AI features land.
+- **AI output needs edit / retry / undo without restarting the flow** ([AI-native UX principles](https://knubisoft.medium.com/ai-native-ux-in-2026-a-builders-guide-97cdb2ef1a7b)). Summaries and proposals should be regenerable in place; we mostly comply (summary bar has Regenerate), but per-note summaries have no retry surface outside the editor.
+- **Spring-loaded folders are a 30-year-old convention we're missing**: during a drag, hovering a collapsed folder auto-expands it after a dwell (~500ms–1s; too-fast triggers are a documented annoyance — [macOS](https://discussions.apple.com/thread/252833810), [Windows](https://www.tenforums.com/performance-maintenance/65480-increase-time-folder-auto-expanding-when-dragging-file-explorer.html)). Now that drops land anywhere in a subtree, this is the missing half of explorer DnD.
+- **Perceived performance**: 100ms = instant, 1s = flow kept ([Nielsen thresholds via User Intuition](https://www.userintuition.ai/reference-guides/latency-and-ux-why-agencies-should-care-about-sub-second-response/)); optimistic interfaces are *perceived* 40–60% faster even at identical latency ([optimistic UI patterns](https://simonhearne.com/2021/optimistic-ui-patterns/)). Note moves, pins, tag toggles already feel ok; the laggards are note selection (waits on `get_note`) and Board open (waits on clustering).
+- **Every action reachable four ways** — button, shortcut, context menu, palette — is what makes Linear feel coherent; identical patterns build muscle memory ([Linear conceptual model](https://linear.app/docs/conceptual-model)). Audit: bulk actions (auto-title, summarize-missing, retag) exist only as sidebar buttons; focus mode/today's note don't exist yet; several palette rows have no shortcut hints left to teach.
+
+## QoL audit findings (June 2026)
+
+Verified in code; file:line refs current as of this commit.
+
+| # | Finding | Where | Value | Effort |
+|---|---|---|---|---|
+| QOL-1 | No spring-loaded folders: dragging over a collapsed folder never expands it; you must drop, expand, re-drag | `Sidebar.tsx` FolderNode | High | S |
+| QOL-2 | Keyboard focus is invisible across the app: no visible focus rings on sidebar rows, search-mode segmented buttons, action-panel quick-add | `Sidebar.tsx`, `NoteList.tsx` ModeButton, `ActionPanel.tsx` | High | S |
+| QOL-3 | Escape doesn't cancel the AutoArrange new-folder input (Enter-only); FolderNameInput traps Tab | `AutoArrangeModal.tsx` ~476, `Sidebar.tsx` FolderNameInput | Med-high | S |
+| QOL-4 | Two-step delete confirms auto-cancel after 2.5s — hesitate and it disarms; no countdown cue | `Sidebar.tsx` TagRow/TrashRow/FolderNode, `Editor.tsx` delete | Med | S |
+| QOL-5 | Context menus are bare divs — no `role="menu"`/`menuitem`, invisible to screen readers | `ContextMenu.tsx` | Med | S |
+| QOL-6 | Empty states (actions panel, filtered tree) name the problem but offer no action button | `ActionPanel.tsx`, `Sidebar.tsx` | Med | S |
+| QOL-7 | Tag input confirms on blur *and* Enter — accidental clicks commit half-typed tags | `Editor.tsx` tag input | Med | S |
+| QOL-8 | DueDatePicker calendar isn't arrow-key navigable | `DueDatePicker.tsx` 170–194 | Low-med | M |
+
+## Performance audit round 2 (June 2026)
+
+Open items from the round-1 table all re-verified as still valid and still open: PERF-5, 8, 9, 10, 12, 13, 14, 15, 17, 18 (refs unchanged). New findings:
+
+| # | Finding | Where | Impact | Effort |
+|---|---|---|---|---|
+| PERF-19 | `related_notes` loads **every** embedding to score one query vector — O(n) memory + cosine per note open | `commands.rs` 444–493 | High at 1k+ notes | M (top-k or sqlite-vec; pairs with PERF-10/17) |
+| PERF-20 | `board_clusters` re-fetches all vectors + O(n²) union-find on every Board open; no cache | `commands.rs` 725–894 | Med (100–300ms Board open) | M (cache + invalidate on note-updated) |
+| PERF-21 | `RecentBoard`/`PinnedBoard` subscribe to the whole `notes` array — re-render on every note-updated during sweeps | `Board.tsx` 549/564 | Med during sweeps | S |
+| PERF-22 | `SortableCard` unmemoized — one card update re-renders the whole cluster | `Board.tsx` 495–525 | Med on Board interaction | S |
+| PERF-23 | `QueueFooter` subscribes to the full queue object; re-renders per tick even when counts are unchanged | `Sidebar.tsx` QueueFooter | Low-med | S |
+| PERF-24 | BubbleMenu re-evaluates `editor.isActive()` per transaction (the concrete instance of PERF-5) | `Editor.tsx` SelectionMenu | Med on large notes | S |
+| PERF-25 | `attach_tags` scans the whole `note_tags` table per call (no `WHERE note_id IN`) — confirmed PERF-13's second half | `db.rs` 195–220 | Low-med | S |
+
+## Next top 10 (June 2026)
+
+Curated by value-for-effort across all open items, implemented in this order (one commit each):
+
+1. **Spring-loaded folders** (QOL-1) — auto-expand collapsed folders after a ~650ms drag-hover dwell.
+2. **Editor typing latency** (PERF-5/24) — `shouldRerenderOnTransaction: false` + `useEditorState` for the selection menu.
+3. **Word count / read time** (round-1 UX-5) — quiet editor footer stat.
+4. **"Open today's note"** (round-1 UX-10/NOTE-9) — palette command + shortcut; date-titled note in a Journal folder.
+5. **Keyboard & a11y pass** (QOL-2/3/5/7 + part of QOL-4) — visible focus rings, Escape/Tab fixes in inline inputs, ARIA menu roles, longer confirm window.
+6. **Background churn reduction** (PERF-21/22/23 + PERF-8) — narrowed subscriptions, memoized Board cards, single-query `queue_status`.
+7. **AI error states that name the failure and the plan** (round-1 AI-4) — cooldown countdown in the queue footer, component-named worker errors.
+8. **Focus mode** (round-1 UX-7) — one shortcut collapses all chrome to just the editor.
+9. **Code-split the editor bundle** (PERF-9) — lazy `Editor`/`Board`, manual chunks; kills the 1.1MB single-chunk warning.
+10. **Version-history diff view** (round-1 UX-8/NOTE-11) — added/removed lines visible before restoring a snapshot.
+
+Deliberately deferred from this round: PERF-19/20 (Board + related-notes vector work — wants the PERF-10 side-table/sqlite-vec refactor done first so it's built once), QOL-8 (calendar keyboard nav — low traffic surface), saved searches / ToC popover / front-matter export (next round candidates).
