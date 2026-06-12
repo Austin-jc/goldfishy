@@ -85,6 +85,9 @@ interface Store {
   /** Collection summaries: in-flight scopes and per-scope results. */
   summaryWorking: Record<string, boolean>;
   summaryCache: Record<string, CollectionSummary>;
+  /** Focus mode: just the editor — sidebar and panels step aside.
+   *  Session-only on purpose; restarting the app always shows full chrome. */
+  focusMode: boolean;
   /** The Board replaces the editor pane while open. */
   boardOpen: boolean;
   /** Which curated feed the Board shows (persisted to localStorage). */
@@ -146,6 +149,7 @@ interface Store {
   generateCollectionSummary: (kind: string, key: string) => Promise<void>;
   setBoardOpen: (b: boolean) => void;
   setBoardMode: (m: BoardMode) => void;
+  toggleFocusMode: () => void;
   /** Import .md/.txt files (or folders of them) and toast the outcome. */
   importNotePaths: (paths: string[]) => Promise<void>;
   toggleSidebar: () => void;
@@ -186,6 +190,7 @@ export const useStore = create<Store>((set, get) => ({
   mergingSimilar: [],
   summaryWorking: {},
   summaryCache: {},
+  focusMode: false,
   boardOpen: false,
   boardMode: (["clusters", "recent", "stale", "pinned"] as const).find(
     (m) => m === localStorage.getItem("nn.boardMode"),
@@ -492,6 +497,14 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
   setBoardOpen: (boardOpen) => set({ boardOpen }),
+
+  toggleFocusMode: () =>
+    set((s) => ({
+      focusMode: !s.focusMode,
+      // Entering focus always lands in the editor, not the Board.
+      boardOpen: s.focusMode ? s.boardOpen : false,
+    })),
+
   setBoardMode: (boardMode) => {
     localStorage.setItem("nn.boardMode", boardMode);
     set({ boardMode });

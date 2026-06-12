@@ -10,6 +10,7 @@ import {
   Import,
   LayoutGrid,
   Loader2,
+  Maximize2,
   PanelLeft,
   Plus,
   RefreshCw,
@@ -90,6 +91,15 @@ function buildCommands(close: () => void): Command[] {
       run: () => {
         close();
         useStore.getState().toggleSidebar();
+      },
+    },
+    {
+      label: "Toggle focus mode",
+      hint: "⌘⇧F",
+      icon: <Maximize2 size={14} />,
+      run: () => {
+        close();
+        useStore.getState().toggleFocusMode();
       },
     },
     {

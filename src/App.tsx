@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { Minimize2 } from "lucide-react";
 import { useStore } from "./store";
 import Sidebar from "./components/Sidebar";
 import Editor from "./components/Editor";
@@ -42,6 +43,7 @@ export default function App() {
   const similarOpen = useStore((s) => s.similarOpen);
   const arrangeOpen = useStore((s) => s.arrangeOpen);
   const boardOpen = useStore((s) => s.boardOpen);
+  const focusMode = useStore((s) => s.focusMode);
 
   useEffect(() => {
     void useStore.getState().init();
@@ -122,7 +124,7 @@ export default function App() {
   }, []);
 
   // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘J today's note,
-  // ⌘, settings, ⌘+/−/0 zoom.
+  // ⌘⇧F focus mode, ⌘, settings, ⌘+/−/0 zoom.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -137,6 +139,10 @@ export default function App() {
         e.preventDefault();
         const st = useStore.getState();
         st.setBoardOpen(!st.boardOpen);
+      } else if (key === "f" && e.shiftKey) {
+        // Plain ⌘F stays the editor's find bar.
+        e.preventDefault();
+        useStore.getState().toggleFocusMode();
       } else if (key === "n") {
         e.preventDefault();
         void useStore.getState().createNote();
@@ -172,11 +178,14 @@ export default function App() {
     );
   }
 
+  // Focus mode: just the editor. Modals and toasts stay reachable; the
+  // sidebar, Board and action panel step aside until ⌘⇧F again.
   return (
     <div className="flex h-full">
-      <Sidebar />
-      {boardOpen ? <Board /> : <Editor />}
-      {actionsOpen && <ActionPanel />}
+      {!focusMode && <Sidebar />}
+      {boardOpen && !focusMode ? <Board /> : <Editor />}
+      {focusMode && <FocusExitButton />}
+      {actionsOpen && !focusMode && <ActionPanel />}
       {settingsOpen && <SettingsModal />}
       {paletteOpen && <CommandPalette />}
       {similarOpen && <SimilarNotesModal />}
@@ -184,5 +193,18 @@ export default function App() {
       <ReminderBanners />
       <Toasts />
     </div>
+  );
+}
+
+/** The one piece of chrome focus mode keeps: a quiet way back out. */
+function FocusExitButton() {
+  return (
+    <button
+      onClick={() => useStore.getState().toggleFocusMode()}
+      title="Exit focus mode (⌘⇧F)"
+      className="fixed left-3 top-3 z-30 cursor-pointer rounded-lg bg-stone-900/80 p-2 text-stone-500 transition-colors hover:bg-stone-800 hover:text-stone-200"
+    >
+      <Minimize2 size={15} />
+    </button>
   );
 }

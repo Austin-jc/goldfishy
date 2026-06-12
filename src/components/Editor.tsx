@@ -255,10 +255,10 @@ function EditorInner({ noteId }: { noteId: string }) {
     }
   }, [editor, searchQuery, searchMode, searchActive, findOpen]);
 
-  // ⌘F opens the in-note find bar.
+  // ⌘F opens the in-note find bar (⌘⇧F is focus mode, handled app-wide).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setFindOpen(true);
       }
