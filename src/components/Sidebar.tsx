@@ -78,6 +78,20 @@ const FOLDER_DROP_PREFIX = "folderdrop:";
 // pointer-based drag, and a preview card popping up mid-drag is just noise.
 let treeDragActive = false;
 
+/** True when `folder` is `ancestorId` itself or sits anywhere in its subtree. */
+function isInSubtree(
+  byId: Map<string, Folder>,
+  folder: Folder,
+  ancestorId: string,
+): boolean {
+  let cur: Folder | undefined = folder;
+  while (cur) {
+    if (cur.id === ancestorId) return true;
+    cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+  }
+  return false;
+}
+
 /** Move a dragged note or folder into the target folder (null = root). */
 async function performTreeMove(data: TreeDragData, targetFolderId: string | null) {
   const st = useStore.getState();
@@ -115,6 +129,7 @@ function loadExpanded(): Record<string, boolean> {
 interface TreeCtx {
   notesByFolder: Map<string | null, Note[]>;
   childrenOf: Map<string | null, Folder[]>;
+  folderById: Map<string, Folder>;
   subtreeCounts: Map<string, number>;
   filterActive: boolean;
   isExpanded: (id: string) => boolean;
@@ -186,6 +201,13 @@ export default function Sidebar() {
           ? overId.slice(FOLDER_DROP_PREFIX.length)
           : undefined;
     if (target === undefined) return;
+    // Subtree-wide drop zones mean a dragged folder hovers its own contents
+    // constantly — landing there is a no-op, not an error.
+    if (data.kind === "folder" && target !== null) {
+      const byId = new Map(useStore.getState().folders.map((f) => [f.id, f] as const));
+      const folder = byId.get(target);
+      if (folder && isInSubtree(byId, folder, data.id)) return;
+    }
     if (target !== null) setExpanded(target, true);
     void performTreeMove(data, target);
   };
@@ -299,6 +321,7 @@ export default function Sidebar() {
     return {
       notesByFolder,
       childrenOf,
+      folderById: new Map(folders.map((f) => [f.id, f] as const)),
       subtreeCounts,
       filterActive: tagFilter.length > 0,
       isExpanded: (id: string) => autoOpen.has(id) || expanded[id] !== false,
@@ -1380,9 +1403,10 @@ const FolderNode = memo(function FolderNode({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // The row is both a drag source (re-parent the folder) and a drop target
-  // (file notes/folders into it). Child rows are DOM siblings, not children,
-  // so nested folders never fight over the same pointer event.
+  // The header row is the drag source (re-parent the folder); the drop target
+  // is the wrapper around the header *and* its children, so dropping anywhere
+  // inside the hierarchy files into this folder. With pointerWithin collision
+  // detection the deepest nested subtree under the pointer wins.
   const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `folder:${folder.id}`,
     data: { kind: "folder", id: folder.id, label: folder.name } satisfies TreeDragData,
@@ -1390,9 +1414,13 @@ const FolderNode = memo(function FolderNode({
   const { setNodeRef: setDropRef, isOver, active: dragged } = useDroppable({
     id: FOLDER_DROP_PREFIX + folder.id,
   });
-  // Hovering its own row while being dragged isn't a valid target.
+  // A folder isn't a valid home for itself or for any of its ancestors-to-be
+  // (its own subtree); the backend refuses such moves, so don't invite them.
+  const dragData = dragged?.data.current as TreeDragData | undefined;
   const dropHover =
-    isOver && (dragged?.data.current as TreeDragData | undefined)?.id !== folder.id;
+    isOver &&
+    dragData !== undefined &&
+    !(dragData.kind === "folder" && isInSubtree(ctx.folderById, folder, dragData.id));
 
   const deleteFolder = async () => {
     await api.deleteFolder(folder.id);
@@ -1426,12 +1454,9 @@ const FolderNode = memo(function FolderNode({
   }
 
   return (
-    <div>
+    <div ref={setDropRef}>
       <div
-        ref={(el) => {
-          setDragRef(el);
-          setDropRef(el);
-        }}
+        ref={setDragRef}
         {...listeners}
         onContextMenu={(e) => {
           e.preventDefault();
