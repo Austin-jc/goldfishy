@@ -43,6 +43,7 @@ import {
   Strikethrough,
   Tags,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import { api } from "../api";
@@ -50,7 +51,15 @@ import { useStore } from "../store";
 import { LocalImage, toggleUnifiedCodeBlock } from "../editor/extensions";
 import { findTermRanges, TermHighlight } from "../editor/highlight";
 import { SlashCommands } from "../editor/slash";
-import { absoluteTime, isImagePath, noteDisplayTitle, relativeTime } from "../utils";
+import {
+  absoluteTime,
+  collapseDiffContext,
+  diffLines,
+  isImagePath,
+  noteDisplayTitle,
+  relativeTime,
+} from "../utils";
+import type { DiffLine } from "../utils";
 import ContextMenu from "./ContextMenu";
 import { Copy } from "lucide-react";
 import type { Note, NoteVersionMeta } from "../types";
@@ -751,23 +760,40 @@ function HistoryPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [versions, setVersions] = useState<NoteVersionMeta[]>([]);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  /** Version whose diff against the current note is expanded inline. */
+  const [diffFor, setDiffFor] = useState<string | null>(null);
+  const [diff, setDiff] = useState<DiffLine[] | null>(null);
   const createdAt = useStore((s) => s.selectedNote?.created_at);
 
   useEffect(() => {
     if (!open) return;
+    setDiffFor(null);
+    setDiff(null);
     void api
       .listNoteVersions(noteId)
       .then(setVersions)
       .catch(() => setVersions([]));
   }, [open, noteId]);
 
-  const restore = async (versionId: string) => {
-    if (confirmId !== versionId) {
-      setConfirmId(versionId);
-      setTimeout(() => setConfirmId(null), 4000);
+  // Reviewing the change is the confirmation step: a row click shows what
+  // restoring would do; only the button inside the diff actually restores.
+  const showDiff = async (versionId: string) => {
+    if (diffFor === versionId) {
+      setDiffFor(null);
+      setDiff(null);
       return;
     }
+    try {
+      const full = await api.getNoteVersion(versionId);
+      const current = useStore.getState().selectedNote?.content ?? "";
+      setDiff(diffLines(current, full.content));
+      setDiffFor(versionId);
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    }
+  };
+
+  const restore = async (versionId: string) => {
     try {
       const updated = await api.restoreNoteVersion(versionId);
       setOpen(false);
@@ -792,32 +818,77 @@ function HistoryPopover({
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-30 mt-1 max-h-80 w-72 overflow-y-auto rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/40">
+          <div
+            className={`absolute right-0 top-full z-30 mt-1 max-h-96 overflow-y-auto rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/40 ${
+              diffFor ? "w-[26rem]" : "w-72"
+            }`}
+          >
             <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
               Version history
             </p>
             {versions.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => void restore(v.id)}
-                className={`block w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors ${
-                  confirmId === v.id ? "bg-clay-600/20" : "hover:bg-stone-800/70"
-                }`}
-              >
-                <span className="flex items-baseline gap-2">
-                  <span className="truncate text-xs text-stone-200">
-                    {v.title || "Untitled"}
+              <div key={v.id}>
+                <button
+                  onClick={() => void showDiff(v.id)}
+                  className={`block w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition-colors ${
+                    diffFor === v.id ? "bg-stone-800/70" : "hover:bg-stone-800/70"
+                  }`}
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span className="truncate text-xs text-stone-200">
+                      {v.title || "Untitled"}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[9px] text-stone-600">
+                      {relativeTime(v.created_at)}
+                    </span>
                   </span>
-                  <span className="ml-auto shrink-0 text-[9px] text-stone-600">
-                    {relativeTime(v.created_at)}
+                  <span className="mt-0.5 line-clamp-2 text-[10px] text-stone-500">
+                    {diffFor === v.id
+                      ? "What restoring this version would change:"
+                      : v.preview || "(empty)"}
                   </span>
-                </span>
-                <span className="mt-0.5 line-clamp-2 text-[10px] text-stone-500">
-                  {confirmId === v.id
-                    ? "Click again to restore this version"
-                    : v.preview || "(empty)"}
-                </span>
-              </button>
+                </button>
+                {diffFor === v.id && diff && (
+                  <div className="mx-1 mb-1 rounded-lg bg-stone-950/60 p-1.5">
+                    {diff.every((l) => l.kind === "same") ? (
+                      <p className="px-1 py-1 text-[10px] italic text-stone-600">
+                        Identical to the current note
+                      </p>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto font-mono text-[10px] leading-relaxed">
+                        {collapseDiffContext(diff).map((l, i) =>
+                          l.kind === "skip" ? (
+                            <p key={i} className="px-1.5 py-0.5 text-center text-stone-700">
+                              ⋯ {l.count} unchanged line{l.count === 1 ? "" : "s"} ⋯
+                            </p>
+                          ) : (
+                            <p
+                              key={i}
+                              className={`whitespace-pre-wrap break-words rounded px-1.5 ${
+                                l.kind === "del"
+                                  ? "bg-red-950/40 text-red-300"
+                                  : l.kind === "add"
+                                    ? "bg-sage-900/40 text-sage-300"
+                                    : "text-stone-500"
+                              }`}
+                            >
+                              {l.kind === "del" ? "− " : l.kind === "add" ? "+ " : "  "}
+                              {l.text || " "}
+                            </p>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => void restore(v.id)}
+                      className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg bg-clay-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-clay-500"
+                    >
+                      <Undo2 size={11} />
+                      Restore this version
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
             {versions.length === 0 && (
               <p className="px-2.5 py-3 text-center text-[11px] text-stone-600">

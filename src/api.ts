@@ -11,6 +11,7 @@ import type {
   Folder,
   ImportResult,
   Note,
+  NoteVersionContent,
   NoteVersionMeta,
   PromptOverrides,
   QueueStatus,
@@ -55,6 +56,8 @@ export const api = {
   removeTag: (noteId: string, tag: string) => invoke<Note>("remove_tag", { noteId, tag }),
   listNoteVersions: (noteId: string) =>
     invoke<NoteVersionMeta[]>("list_note_versions", { noteId }),
+  getNoteVersion: (versionId: string) =>
+    invoke<NoteVersionContent>("get_note_version", { versionId }),
   restoreNoteVersion: (versionId: string) =>
     invoke<Note>("restore_note_version", { versionId }),
   acceptFolderSuggestion: (noteId: string) =>

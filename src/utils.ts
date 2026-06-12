@@ -145,3 +145,92 @@ export function recencyBucket(ms: number): (typeof RECENCY_BUCKETS)[number] {
   if (ms >= startOfToday - 30 * day) return "Previous 30 days";
   return "Older";
 }
+
+// ----------------------------------------------------------------- line diff
+
+export interface DiffLine {
+  kind: "same" | "add" | "del";
+  text: string;
+}
+
+/** A run of unchanged lines elided from a rendered diff. */
+export interface DiffSkip {
+  kind: "skip";
+  count: number;
+}
+
+/**
+ * Line-level LCS diff between two texts — sized for note snapshots, not
+ * arbitrary files. Past ~4M line comparisons it degrades to a whole-text
+ * replace rather than risking a UI stall.
+ */
+export function diffLines(before: string, after: string): DiffLine[] {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const n = a.length;
+  const m = b.length;
+  if (n * m > 4_000_000) {
+    return [
+      ...a.map((text): DiffLine => ({ kind: "del", text })),
+      ...b.map((text): DiffLine => ({ kind: "add", text })),
+    ];
+  }
+  const dp = new Uint32Array((n + 1) * (m + 1));
+  const idx = (i: number, j: number) => i * (m + 1) + j;
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[idx(i, j)] =
+        a[i] === b[j]
+          ? dp[idx(i + 1, j + 1)] + 1
+          : Math.max(dp[idx(i + 1, j)], dp[idx(i, j + 1)]);
+    }
+  }
+  const out: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      out.push({ kind: "same", text: a[i] });
+      i++;
+      j++;
+    } else if (dp[idx(i + 1, j)] >= dp[idx(i, j + 1)]) {
+      out.push({ kind: "del", text: a[i] });
+      i++;
+    } else {
+      out.push({ kind: "add", text: b[j] });
+      j++;
+    }
+  }
+  while (i < n) out.push({ kind: "del", text: a[i++] });
+  while (j < m) out.push({ kind: "add", text: b[j++] });
+  return out;
+}
+
+/** Elide long unchanged runs, keeping `context` lines around each change. */
+export function collapseDiffContext(
+  diff: DiffLine[],
+  context = 2,
+): (DiffLine | DiffSkip)[] {
+  const keep = new Array<boolean>(diff.length).fill(false);
+  diff.forEach((l, i) => {
+    if (l.kind === "same") return;
+    for (let k = Math.max(0, i - context); k <= Math.min(diff.length - 1, i + context); k++) {
+      keep[k] = true;
+    }
+  });
+  const out: (DiffLine | DiffSkip)[] = [];
+  let skipped = 0;
+  diff.forEach((l, i) => {
+    if (keep[i]) {
+      if (skipped > 0) {
+        out.push({ kind: "skip", count: skipped });
+        skipped = 0;
+      }
+      out.push(l);
+    } else {
+      skipped++;
+    }
+  });
+  if (skipped > 0) out.push({ kind: "skip", count: skipped });
+  return out;
+}

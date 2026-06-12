@@ -159,6 +159,12 @@ export interface NoteVersionMeta {
   created_at: number;
 }
 
+/** Full stored text of one version (fetched on demand for the diff view). */
+export interface NoteVersionContent {
+  title: string;
+  content: string;
+}
+
 export interface CollectionSummary {
   summary: string;
   updated_at: number;

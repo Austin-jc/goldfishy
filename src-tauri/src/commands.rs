@@ -1695,6 +1695,31 @@ pub async fn list_note_versions(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+#[derive(Serialize)]
+pub struct NoteVersionContent {
+    pub title: String,
+    pub content: String,
+}
+
+/// Full stored text of one version — fetched on demand by the history
+/// diff view (list_note_versions only ships previews).
+#[tauri::command]
+pub async fn get_note_version(app: AppHandle, version_id: String) -> CmdResult<NoteVersionContent> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.query_row(
+        "SELECT title, content FROM note_versions WHERE id = ?1",
+        params![version_id],
+        |r| {
+            Ok(NoteVersionContent {
+                title: r.get(0)?,
+                content: r.get(1)?,
+            })
+        },
+    )
+    .map_err(estr)
+}
+
 /// Replace the note's content with a stored version (snapshotting the
 /// current state first, so a restore is itself undoable).
 #[tauri::command]

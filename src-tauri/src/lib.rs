@@ -135,6 +135,7 @@ pub fn run() {
             commands::delete_folder,
             commands::list_tags,
             commands::delete_tag,
+            commands::get_note_version,
             commands::ai_process_note,
             commands::ai_title_untitled,
             commands::ai_retag_all,
