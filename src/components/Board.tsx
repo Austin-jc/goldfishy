@@ -779,7 +779,7 @@ const BoardCard = memo(function BoardCard({
   const del = () => {
     if (!confirmDel) {
       setConfirmDel(true);
-      setTimeout(() => setConfirmDel(false), 2500);
+      setTimeout(() => setConfirmDel(false), 4000);
       return;
     }
     const id = live.id;

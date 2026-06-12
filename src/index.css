@@ -38,6 +38,17 @@
   color-scheme: dark;
 }
 
+/* Keyboard navigation must be visible: controls focused via keyboard get the
+   accent outline. Mouse clicks don't match :focus-visible, so pointer use
+   stays clean. */
+button:focus-visible,
+a:focus-visible,
+[role="menuitem"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-clay-500);
+  outline-offset: -1px;
+}
+
 /* Terra — cream, terracotta, indigo ink (light) */
 [data-theme="terra"] {
   color-scheme: light;

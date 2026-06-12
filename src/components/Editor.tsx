@@ -506,7 +506,7 @@ function EditorInner({ noteId }: { noteId: string }) {
             onClick={() => {
               if (!confirmDelete) {
                 setConfirmDelete(true);
-                setTimeout(() => setConfirmDelete(false), 2500);
+                setTimeout(() => setConfirmDelete(false), 4000);
                 return;
               }
               dirtyRef.current = false;
@@ -765,7 +765,7 @@ function HistoryPopover({
   const restore = async (versionId: string) => {
     if (confirmId !== versionId) {
       setConfirmId(versionId);
-      setTimeout(() => setConfirmId(null), 2500);
+      setTimeout(() => setConfirmId(null), 4000);
       return;
     }
     try {

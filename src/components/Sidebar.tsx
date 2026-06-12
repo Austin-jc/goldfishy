@@ -385,7 +385,7 @@ export default function Sidebar() {
   const retagAll = async () => {
     if (!confirmRetag) {
       setConfirmRetag(true);
-      setTimeout(() => setConfirmRetag(false), 2500);
+      setTimeout(() => setConfirmRetag(false), 4000);
       return;
     }
     setConfirmRetag(false);
@@ -845,7 +845,7 @@ function TagRow({
   const remove = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 2500);
+      setTimeout(() => setConfirmDelete(false), 4000);
       return;
     }
     try {
@@ -920,7 +920,7 @@ function TrashSection() {
   const emptyAll = async () => {
     if (!confirmEmpty) {
       setConfirmEmpty(true);
-      setTimeout(() => setConfirmEmpty(false), 2500);
+      setTimeout(() => setConfirmEmpty(false), 4000);
       return;
     }
     try {
@@ -992,7 +992,7 @@ function TrashRow({ note, onRestore }: { note: Note; onRestore: () => void }) {
             onClick={async () => {
               if (!confirmPurge) {
                 setConfirmPurge(true);
-                setTimeout(() => setConfirmPurge(false), 2500);
+                setTimeout(() => setConfirmPurge(false), 4000);
                 return;
               }
               try {
@@ -1598,7 +1598,7 @@ const FolderNode = memo(function FolderNode({
             onClick={async () => {
               if (!confirmDelete) {
                 setConfirmDelete(true);
-                setTimeout(() => setConfirmDelete(false), 2500);
+                setTimeout(() => setConfirmDelete(false), 4000);
                 return;
               }
               await deleteFolder();

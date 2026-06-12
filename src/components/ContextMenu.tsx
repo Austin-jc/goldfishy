@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export interface MenuItem {
   label: string;
@@ -30,6 +30,17 @@ export default function ContextMenu({
 }) {
   const [arming, setArming] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [onClose]);
+
   const style = useMemo(() => {
     const h = items.length * ITEM_H + 8;
     return {
@@ -50,6 +61,7 @@ export default function ContextMenu({
         }}
       />
       <div
+        role="menu"
         className="fade-in fixed z-50 rounded-xl border border-stone-800 bg-stone-900 p-1 shadow-2xl shadow-black/60"
         style={style}
       >
@@ -58,6 +70,7 @@ export default function ContextMenu({
           return (
             <button
               key={item.label}
+              role="menuitem"
               onClick={() => {
                 if (item.confirm && !armed) {
                   setArming(item.label);
