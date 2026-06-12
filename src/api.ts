@@ -2,6 +2,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type {
   ActionItem,
   ActionStatus,
+  AgentActivity,
   AppSettings,
   ArrangeGroup,
   ArrangeMove,
@@ -137,4 +138,8 @@ export const api = {
   getPromptOverrides: () => invoke<PromptOverrides | null>("get_prompt_overrides"),
   setPromptOverrides: (overrides: PromptOverrides) =>
     invoke<void>("set_prompt_overrides", { overrides }),
+
+  // agent audit trail (written by the goldfishy-mcp server)
+  listAgentActivity: (noteId?: string, limit?: number) =>
+    invoke<AgentActivity[]>("list_agent_activity", { noteId, limit }),
 };

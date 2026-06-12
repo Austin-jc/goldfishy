@@ -61,6 +61,19 @@ Everything lives in the app data directory (`~/Library/Application Support/com.n
 
 Notes are plain Markdown in the DB and export losslessly; the schema tracks `embedding_status` / `llm_status` (`CLEAN | PENDING | STALE`) per note so the background queues always know what to process.
 
+## Agents (MCP server)
+
+Rather than opening notes *into* other apps, GoldFishy lets agents come *to* the
+notes. The **MCP server** in [`mcp-server/`](mcp-server/) exposes your notes to
+Claude Code (or any [MCP](https://modelcontextprotocol.io) client) over stdio —
+keyword search, read, list — reaching into the same database, no copy or sync.
+
+It's read-mostly: the only writes are an append-only **audit trail**, so every
+note an agent reads or acts on is recorded with the agent's name and shown in the
+editor ("🤖 Claude Code actioned this — …"). `GOLDFISHY_MCP_EXCLUDE` hides folders
+like your journal. Build it with `cargo build --release` in `mcp-server/`; full
+setup and the Claude Code config are in **[docs/mcp.md](docs/mcp.md)**.
+
 ## Architecture notes
 
 - Embedding vectors are stored as BLOBs and ranked with an in-process cosine scan — at personal-notes scale (thousands of notes) this is well under the 50 ms budget and avoids native extension headaches. The spec's `sqlite-vss` extension is unmaintained; swapping in `sqlite-vec` later is a contained change in `src-tauri/src/embed.rs`.

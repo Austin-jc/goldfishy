@@ -122,6 +122,20 @@ fn migrate(conn: &Connection) -> Result<()> {
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_versions_note ON note_versions(note_id, created_at);
+
+        -- Append-only log of what external agents (via the MCP server) read or
+        -- actioned, so the user can see "actioned by agent xyz". Written by the
+        -- goldfishy-mcp process; read-only here.
+        CREATE TABLE IF NOT EXISTS agent_activity (
+            id TEXT PRIMARY KEY,
+            agent TEXT NOT NULL,
+            action TEXT NOT NULL,
+            note_id TEXT,
+            detail TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_activity_note ON agent_activity(note_id);
+        CREATE INDEX IF NOT EXISTS idx_agent_activity_created ON agent_activity(created_at);
         "#,
     )?;
     // Additive column migrations — "duplicate column name" on re-run is fine.

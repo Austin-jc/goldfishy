@@ -17,10 +17,12 @@ import { common, createLowlight } from "lowlight";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Bold,
+  Bot,
   Check,
   ChevronDown,
   ChevronUp,
   Code,
+  Eye,
   FileText,
   Folder as FolderIcon,
   Heading1,
@@ -52,7 +54,7 @@ import { SlashCommands } from "../editor/slash";
 import { absoluteTime, isImagePath, noteDisplayTitle, relativeTime } from "../utils";
 import ContextMenu from "./ContextMenu";
 import { Copy } from "lucide-react";
-import type { Note, NoteVersionMeta } from "../types";
+import type { AgentActivity, Note, NoteVersionMeta } from "../types";
 
 const lowlight = createLowlight(common);
 
@@ -549,6 +551,9 @@ function EditorInner({ noteId }: { noteId: string }) {
         </div>
       )}
 
+      {/* agent audit trail — what an MCP agent read/actioned on this note */}
+      <AgentActivityBanner noteId={noteId} />
+
       {/* canvas — a single centered column; whitespace does the dividing */}
       <div
         className="flex-1 overflow-y-auto"
@@ -732,6 +737,97 @@ function RewritePreview({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Agent audit trail for the open note — shows what an external agent (via the
+ * MCP server) read or actioned, so the user can see e.g. "actioned by Claude
+ * Code". Hidden entirely when no agent has touched this note. Read-only:
+ * `search` activity has no note_id so it never appears here.
+ */
+function AgentActivityBanner({ noteId }: { noteId: string }) {
+  const [activity, setActivity] = useState<AgentActivity[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setExpanded(false);
+    void api
+      .listAgentActivity(noteId, 50)
+      .then((rows) => live && setActivity(rows))
+      .catch(() => live && setActivity([]));
+    return () => {
+      live = false;
+    };
+  }, [noteId]);
+
+  if (activity.length === 0) return null;
+
+  // Lead with the most recent "actioned" entry (the thing the user most wants
+  // to know about), else the most recent activity overall.
+  const lead = activity.find((a) => a.action === "actioned") ?? activity[0];
+  const isActioned = lead.action === "actioned";
+
+  const verb = (a: AgentActivity) =>
+    a.action === "actioned" ? "actioned" : a.action === "read" ? "read this note" : a.action;
+
+  return (
+    <div className="fade-in mx-5 mb-1 rounded-lg bg-stone-900/60 px-3 py-1.5 text-xs text-stone-400 ring-1 ring-stone-800/80">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full cursor-pointer items-center gap-2 text-left"
+        title="Activity by external agents via the MCP server"
+      >
+        {isActioned ? (
+          <Bot size={12} className="shrink-0 text-sage-300" />
+        ) : (
+          <Eye size={12} className="shrink-0 text-stone-500" />
+        )}
+        <span className="min-w-0 truncate">
+          <b className={isActioned ? "font-medium text-sage-200" : "font-medium text-stone-300"}>
+            {lead.agent}
+          </b>{" "}
+          {verb(lead)}
+          {isActioned && lead.detail ? (
+            <>
+              {" — "}
+              <span className="text-stone-300">{lead.detail}</span>
+            </>
+          ) : null}
+        </span>
+        <span className="ml-auto shrink-0 text-[10px] text-stone-600">
+          {relativeTime(lead.created_at)}
+        </span>
+        {activity.length > 1 &&
+          (expanded ? (
+            <ChevronUp size={12} className="shrink-0 text-stone-600" />
+          ) : (
+            <ChevronDown size={12} className="shrink-0 text-stone-600" />
+          ))}
+      </button>
+      {expanded && activity.length > 1 && (
+        <ul className="mt-1.5 space-y-1 border-t border-stone-800/80 pt-1.5">
+          {activity.map((a) => (
+            <li key={a.id} className="flex items-center gap-2">
+              {a.action === "actioned" ? (
+                <Bot size={10} className="shrink-0 text-sage-400" />
+              ) : (
+                <Eye size={10} className="shrink-0 text-stone-600" />
+              )}
+              <span className="min-w-0 truncate">
+                <span className="text-stone-300">{a.agent}</span>{" "}
+                <span className="text-stone-500">{verb(a)}</span>
+                {a.detail ? <span className="text-stone-400"> — {a.detail}</span> : null}
+              </span>
+              <span className="ml-auto shrink-0 text-[10px] text-stone-600">
+                {relativeTime(a.created_at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

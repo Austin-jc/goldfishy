@@ -12,8 +12,8 @@ use crate::db::{self, now_ms};
 use crate::diff;
 use crate::embed;
 use crate::models::{
-    ActionItem, AppSettings, ArrangeGroup, ArrangeMove, Folder, ImportResult, Note, QueueStatus,
-    TagCount,
+    ActionItem, AgentActivity, AppSettings, ArrangeGroup, ArrangeMove, Folder, ImportResult, Note,
+    QueueStatus, TagCount,
 };
 use crate::queue;
 use crate::state::AppState;
@@ -58,6 +58,56 @@ pub async fn get_note(app: AppHandle, id: String) -> CmdResult<Note> {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
     db::get_note(&db, &id).map_err(eanyhow)
+}
+
+/// Agent audit trail (written by the goldfishy-mcp server). Pass `note_id` to
+/// scope to one note, or omit for the most recent activity across all notes.
+#[tauri::command]
+pub async fn list_agent_activity(
+    app: AppHandle,
+    note_id: Option<String>,
+    limit: Option<i64>,
+) -> CmdResult<Vec<AgentActivity>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let limit = limit.unwrap_or(50).clamp(1, 500);
+    let map = |r: &rusqlite::Row| -> rusqlite::Result<AgentActivity> {
+        Ok(AgentActivity {
+            id: r.get(0)?,
+            agent: r.get(1)?,
+            action: r.get(2)?,
+            note_id: r.get(3)?,
+            detail: r.get(4)?,
+            created_at: r.get(5)?,
+        })
+    };
+    let cols = "id, agent, action, note_id, detail, created_at";
+    let rows = match note_id {
+        Some(nid) => {
+            let mut stmt = db
+                .prepare(&format!(
+                    "SELECT {cols} FROM agent_activity WHERE note_id = ?1 \
+                     ORDER BY created_at DESC LIMIT ?2"
+                ))
+                .map_err(estr)?;
+            stmt.query_map(params![nid, limit], map)
+                .map_err(estr)?
+                .filter_map(|r| r.ok())
+                .collect()
+        }
+        None => {
+            let mut stmt = db
+                .prepare(&format!(
+                    "SELECT {cols} FROM agent_activity ORDER BY created_at DESC LIMIT ?1"
+                ))
+                .map_err(estr)?;
+            stmt.query_map(params![limit], map)
+                .map_err(estr)?
+                .filter_map(|r| r.ok())
+                .collect()
+        }
+    };
+    Ok(rows)
 }
 
 #[tauri::command]

@@ -59,3 +59,8 @@ Tracking doc for agreed nice-to-have features. Status: `[ ]` planned · `[~]` in
 - [x] **Tag-refresh debounce + memoized tree rows** (PERF-4/6) — kills sidebar churn during worker sweeps.
 - [x] **Hybrid smart search** (NOTE-3) — BM25 + embeddings fused with RRF as the default mode; semantic-only hits badged "meaning"; degrades to keyword until the embedder is ready.
 - [x] **Palette shortcut hints** (UX-4) — every shortcut-backed action is a palette row with its ⌘-hint (incl. new Quick capture / Find in note / Toggle sidebar commands).
+
+## Agents
+
+- [x] **MCP server** (AI-9/10) — `mcp-server/` exposes notes to Claude Code / any MCP client over stdio (keyword search, read, list folders/notes), reaching into the same DB with no copy or sync. Read-mostly: the only writes are an append-only `agent_activity` audit trail, surfaced in the editor as "🤖 *agent* read/actioned this" so the user sees what an agent touched. Trash filtered in every path; `GOLDFISHY_MCP_EXCLUDE` hides folder subtrees; tool descriptions fence note content as untrusted data. Setup in [docs/mcp.md](docs/mcp.md).
+- [ ] **MCP privacy as a folder flag** (AI-12) — promote `GOLDFISHY_MCP_EXCLUDE` to a per-folder `no_expose` toggle in the UI, persisted in the DB, so exclusions don't live only in the agent's launch config.

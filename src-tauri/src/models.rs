@@ -39,6 +39,19 @@ pub struct Folder {
     pub created_at: i64,
 }
 
+/// One row of the agent audit trail (see db.rs `agent_activity`). Surfaced in
+/// the UI so the user can see what an external agent (via the MCP server) did
+/// with their notes.
+#[derive(Serialize, Clone, Debug)]
+pub struct AgentActivity {
+    pub id: String,
+    pub agent: String,
+    pub action: String, // read | search | actioned
+    pub note_id: Option<String>,
+    pub detail: Option<String>,
+    pub created_at: i64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct TagCount {
     pub tag: String,

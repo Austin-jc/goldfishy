@@ -42,6 +42,20 @@ export interface TagCount {
   count: number;
 }
 
+/**
+ * One row of the agent audit trail — what an external agent (via the MCP
+ * server) did with a note. Shown in the editor so the user can see e.g.
+ * "actioned by Claude Code".
+ */
+export interface AgentActivity {
+  id: string;
+  agent: string;
+  action: "read" | "search" | "actioned" | string;
+  note_id: string | null;
+  detail: string | null;
+  created_at: number;
+}
+
 /** One folder's worth of an auto-arrange plan (folder_id null = new folder). */
 export interface ArrangeGroup {
   folder_id: string | null;

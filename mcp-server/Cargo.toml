@@ -1,0 +1,20 @@
+[package]
+name = "goldfishy-mcp"
+version = "0.1.0"
+description = "Read-mostly MCP server exposing GoldFishy notes to local agents (e.g. Claude Code)"
+edition = "2021"
+
+# Independent of the Tauri crate on purpose: this is a headless, decoupled tool
+# that talks to the same SQLite file. It never links the app, so it stays tiny
+# and can run without the GUI app being open.
+[[bin]]
+name = "goldfishy-mcp"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
