@@ -1,11 +1,9 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Minimize2 } from "lucide-react";
 import { useStore } from "./store";
 import Sidebar from "./components/Sidebar";
-import Editor from "./components/Editor";
-import Board from "./components/Board";
 import ActionPanel from "./components/ActionPanel";
 import ReminderBanners from "./components/ReminderBanners";
 import SettingsModal from "./components/SettingsModal";
@@ -15,6 +13,12 @@ import AutoArrangeModal from "./components/AutoArrangeModal";
 import Toasts from "./components/Toasts";
 import { isImagePath } from "./utils";
 import type { ActionItem, Note, QueueStatus } from "./types";
+
+// The editor (Tiptap + lowlight grammars) and the Board are the two heavy
+// chunks — split out so the shell paints first and the capture window's
+// bundle stays slim.
+const Editor = lazy(() => import("./components/Editor"));
+const Board = lazy(() => import("./components/Board"));
 
 // Webview zoom (⌘+/⌘−/⌘0), persisted across launches.
 const ZOOM_MIN = 0.5;
@@ -183,7 +187,9 @@ export default function App() {
   return (
     <div className="flex h-full">
       {!focusMode && <Sidebar />}
-      {boardOpen && !focusMode ? <Board /> : <Editor />}
+      <Suspense fallback={<main className="flex-1" />}>
+        {boardOpen && !focusMode ? <Board /> : <Editor />}
+      </Suspense>
       {focusMode && <FocusExitButton />}
       {actionsOpen && !focusMode && <ActionPanel />}
       {settingsOpen && <SettingsModal />}
