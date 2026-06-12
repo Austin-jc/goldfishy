@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
+  CalendarDays,
   ChevronRight,
   Download,
   FileText,
@@ -12,6 +13,7 @@ import {
   PanelLeft,
   Plus,
   RefreshCw,
+  ScrollText,
   Search,
   Settings,
   Sparkles,
@@ -41,6 +43,15 @@ function buildCommands(close: () => void): Command[] {
       run: () => {
         close();
         void useStore.getState().createNote();
+      },
+    },
+    {
+      label: "Open today's note",
+      hint: "⌘J",
+      icon: <CalendarDays size={14} />,
+      run: () => {
+        close();
+        void useStore.getState().openTodayNote();
       },
     },
     {
@@ -129,6 +140,24 @@ function buildCommands(close: () => void): Command[] {
                   n > 0
                     ? `Auto-titled ${n} note${n === 1 ? "" : "s"}`
                     : "No notes needed a title",
+                  "success",
+                );
+              } catch (e) {
+                useStore.getState().toast(String(e), "error");
+              }
+            },
+          } satisfies Command,
+          {
+            label: "Summarize notes without summaries",
+            icon: <ScrollText size={14} />,
+            run: async () => {
+              close();
+              try {
+                const n = await api.aiSummarizeMissing();
+                useStore.getState().toast(
+                  n > 0
+                    ? `Summarized ${n} note${n === 1 ? "" : "s"}`
+                    : "Every note already has a summary",
                   "success",
                 );
               } catch (e) {

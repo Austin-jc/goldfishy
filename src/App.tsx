@@ -119,7 +119,8 @@ export default function App() {
     };
   }, []);
 
-  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘, settings, ⌘+/−/0 zoom.
+  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘J today's note,
+  // ⌘, settings, ⌘+/−/0 zoom.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -137,6 +138,9 @@ export default function App() {
       } else if (key === "n") {
         e.preventDefault();
         void useStore.getState().createNote();
+      } else if (key === "j") {
+        e.preventDefault();
+        void useStore.getState().openTodayNote();
       } else if (key === ",") {
         e.preventDefault();
         useStore.getState().setSettingsOpen(true);

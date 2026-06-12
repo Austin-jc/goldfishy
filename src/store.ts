@@ -116,6 +116,8 @@ interface Store {
   createNoteWithTitle: (title: string) => Promise<void>;
   /** Create a note titled with the current search query and clear the search. */
   createNoteFromSearch: () => Promise<void>;
+  /** Open (or create) today's date-titled note in the Journal folder. */
+  openTodayNote: () => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   applyNoteUpdate: (note: Note) => void;
   removeNoteLocal: (id: string) => void;
@@ -282,6 +284,40 @@ export const useStore = create<Store>((set, get) => ({
     if (!title) return;
     set({ searchQuery: "", searchResults: null });
     await get().createNoteWithTitle(title);
+  },
+
+  openTodayNote: async () => {
+    // Local date, not toISOString (UTC would roll the title over mid-evening).
+    const now = new Date();
+    const title = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+    try {
+      // Match by title anywhere — a journal note the user re-filed still counts.
+      const all = await api.listNotes(null, null);
+      const existing = all.find((n) => n.title.trim() === title);
+      if (existing) {
+        await get().selectNote(existing.id);
+        return;
+      }
+      let journal = get().folders.find((f) => f.name.toLowerCase() === "journal");
+      if (!journal) {
+        journal = await api.createFolder("Journal", null);
+        await get().refreshFolders();
+      }
+      const note = await api.createNote(journal.id);
+      const updated = await api.updateNote(note.id, title, "");
+      set((s) => ({
+        notes: [updated, ...s.notes],
+        selectedNote: updated,
+        boardOpen: false,
+      }));
+      recordRecent(updated.id);
+    } catch (e) {
+      get().toast(String(e), "error");
+    }
   },
 
   deleteNote: async (id) => {
