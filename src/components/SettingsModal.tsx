@@ -521,6 +521,71 @@ export default function SettingsModal() {
             </div>
           </section>
 
+          {/* ---------------- Summaries & previews ---------------- */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              Note Summaries &amp; Previews
+            </h3>
+            <div className="space-y-3 rounded-lg border border-stone-800 p-3">
+              <ToggleRow
+                label="Summarize notes automatically"
+                desc="Keep a short AI summary of every note up to date as you write (needs an AI engine)."
+                value={local.summarize_notes}
+                onChange={(v) => set("summarize_notes", v)}
+              />
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-stone-200">Summary style</p>
+                  <p className="text-[10px] text-stone-500">
+                    Blurb is one sentence; Bullets list the key points; To-dos pull out the tasks.
+                  </p>
+                </div>
+                <Segmented
+                  value={local.note_summary_style}
+                  options={[
+                    ["blurb", "Blurb"],
+                    ["bullets", "Bullets"],
+                    ["todos", "To-dos"],
+                  ]}
+                  onChange={(v) => set("note_summary_style", v)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-stone-200">Board stickies show</p>
+                  <p className="text-[10px] text-stone-500">
+                    A sticky's body text — the AI summary (falls back to the note text until one
+                    exists) or always the note text.
+                  </p>
+                </div>
+                <Segmented
+                  value={local.board_preview}
+                  options={[
+                    ["summary", "Summary"],
+                    ["excerpt", "Note text"],
+                  ]}
+                  onChange={(v) => set("board_preview", v)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs text-stone-200">Explorer hover preview shows</p>
+                  <p className="text-[10px] text-stone-500">
+                    The card that pops up when you hover a note in the sidebar tree.
+                  </p>
+                </div>
+                <Segmented
+                  value={local.hover_preview}
+                  options={[
+                    ["summary", "Summary"],
+                    ["excerpt", "Note text"],
+                  ]}
+                  onChange={(v) => set("hover_preview", v)}
+                />
+              </div>
+            </div>
+          </section>
+
           {/* ---------------- Reminders & action items ---------------- */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
@@ -707,6 +772,33 @@ function LineNumbersToggle() {
   );
 }
 
+/** Small mutually-exclusive choice row, same look as the mode toggles above. */
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: ReadonlyArray<readonly [T, string]>;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex shrink-0 overflow-hidden rounded-md border border-stone-700">
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          className={`cursor-pointer px-3 py-1 text-xs transition-colors ${
+            value === v ? "bg-clay-600 text-white" : "text-stone-400 hover:bg-stone-800"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const inputCls =
   "rounded-md border border-stone-700 bg-stone-950 px-2 py-1.5 text-xs text-stone-200 outline-none focus:border-clay-600 w-full";
 const btnCls =
@@ -757,6 +849,7 @@ const PROMPT_TASK_LABELS: Record<string, string> = {
   bulletify: "Auto-bullet",
   merge: "Merge similar notes",
   summary: "Collection summary",
+  note_summary: "Note summary (stickies & hover previews)",
 };
 
 /**

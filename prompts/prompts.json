@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "_readme": "Single source of truth for every LLM prompt, JSON schema, token cap and truncation limit. Loaded by src-tauri/src/prompts.rs (include_str!) and bench/src/prompts.ts. {placeholders} are filled at call time; literal braces elsewhere are sent as-is. Bump `version` on ANY change here — it is stamped into bench results so scores are comparable.",
   "title": {
     "system": "You title notes. Reply with ONLY the title text — plain words, no quotes, no markdown, no trailing punctuation.",
@@ -64,8 +64,10 @@
     "folder_instructions_off": "Use null for the folder.",
     "actions_instructions": "Also extract up to 6 concrete action items (tasks, follow-ups, reminders) from the note — only real actions the author still needs to do, not facts, ideas, or completed work; an empty list is fine. For each item give: \"text\" (short imperative phrase), \"category\" (one or two lowercase words; reuse one of {cats_json} when it fits, else invent a sensible one like \"work\", \"errands\", \"health\", \"follow-up\"), and \"due\" — \"YYYY-MM-DD\" or \"YYYY-MM-DD HH:MM\" if the note implies a date or deadline (resolve relative phrases like \"tomorrow\" or \"next friday\" using today's date), else null.",
     "actions_instructions_off": "Return an empty items list.",
-    "user": "Today is {today}. Organize the note below in one pass.\n{title_instructions}\n{tag_instructions}\n{folder_instructions}\n{actions_instructions}\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}\n\nReply with JSON exactly like: {\"title\": null, \"tags\": [\"tag1\"], \"folder\": \"folder name or null\", \"items\": [{\"text\": \"...\", \"category\": \"...\", \"due\": null}]}",
-    "max_tokens": 900,
+    "summary_instructions": "Also set \"summary\" to a standalone summary of the note. {summary_style}",
+    "summary_instructions_off": "Use null for the summary.",
+    "user": "Today is {today}. Organize the note below in one pass.\n{title_instructions}\n{tag_instructions}\n{folder_instructions}\n{actions_instructions}\n{summary_instructions}\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}\n\nReply with JSON exactly like: {\"title\": null, \"tags\": [\"tag1\"], \"folder\": \"folder name or null\", \"items\": [{\"text\": \"...\", \"category\": \"...\", \"due\": null}], \"summary\": null}",
+    "max_tokens": 1100,
     "limits": { "title": 200, "content": 8000 },
     "schema_name": "note_organize",
     "schema": {
@@ -86,11 +88,21 @@
             "required": ["text", "category", "due"],
             "additionalProperties": false
           }
-        }
+        },
+        "summary": { "type": ["string", "null"] }
       },
-      "required": ["title", "tags", "folder", "items"],
+      "required": ["title", "tags", "folder", "items", "summary"],
       "additionalProperties": false
     }
+  },
+  "note_summary": {
+    "system": "You summarize a single note from a personal note-taking app. Reply with ONLY the summary — no preamble, no heading, no code fences.",
+    "style_blurb": "Write one tight plain-text sentence (max 25 words) capturing what the note is about and its key point.",
+    "style_bullets": "Write 2-4 terse markdown bullets (lines starting \"- \") capturing the note's key facts, decisions and open questions.",
+    "style_todos": "List the note's outstanding tasks as markdown checkboxes (lines starting \"- [ ] \", or \"- [x] \" for ones the note marks done), at most 6. If the note has no tasks, write 1-2 plain \"- \" bullets capturing its key points instead.",
+    "user": "{summary_style}\n\nNOTE TITLE: {title}\nNOTE CONTENT:\n{content}",
+    "max_tokens": 256,
+    "limits": { "title": 200, "content": 8000 }
   },
   "bulletify": {
     "system": "You restructure messy notes into clean markdown. Reply with ONLY the restructured markdown — no preamble, no explanation.",

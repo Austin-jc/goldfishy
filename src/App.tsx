@@ -29,6 +29,9 @@ function setZoom(factor: number) {
   const z = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, factor)) * 10) / 10;
   localStorage.setItem("nn.zoom", String(z));
   void getCurrentWebview().setZoom(z);
+  // WKWebView's page zoom double-scales SVG strokes; index.css multiplies
+  // this inverse factor back into every icon's stroke-width to cancel it.
+  document.documentElement.style.setProperty("--zoom-inv", String(1 / z));
 }
 
 export default function App() {
@@ -98,7 +101,7 @@ export default function App() {
   // Restore persisted webview zoom before first paint settles.
   useEffect(() => {
     const z = currentZoom();
-    if (z !== 1) void getCurrentWebview().setZoom(z);
+    if (z !== 1) setZoom(z);
   }, []);
 
   // OS files dropped anywhere on the window become imported notes (.md/.txt,

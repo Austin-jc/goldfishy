@@ -1,5 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import {
   Bell,
   Check,
   ChevronDown,
@@ -34,10 +45,10 @@ import { api } from "../api";
 import { useStore } from "../store";
 import {
   noteDisplayTitle,
+  notePreview,
   recencyBucket,
   RECENCY_BUCKETS,
   relativeTime,
-  stripMarkdown,
 } from "../utils";
 import ContextMenu from "./ContextMenu";
 import GoldfishLogo from "./GoldfishLogo";
@@ -47,30 +58,49 @@ import type { Folder, Note } from "../types";
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 480;
 const EXPANDED_KEY = "nn.expandedFolders";
-const NOTE_MIME = "application/x-goldfishy-note";
-const FOLDER_MIME = "application/x-goldfishy-folder";
 
-function hasTreePayload(e: React.DragEvent) {
-  return e.dataTransfer.types.includes(NOTE_MIME) || e.dataTransfer.types.includes(FOLDER_MIME);
+// Drag is pointer-based (dnd-kit) — Tauri's native drag handler swallows
+// HTML5 drag events inside the webview, so dataTransfer never works here.
+
+/** Payload carried by a dragged tree row. */
+interface TreeDragData {
+  kind: "note" | "folder";
+  id: string;
+  label: string;
 }
 
-/** Move whatever was dragged (note or folder) into the target folder. */
-async function handleTreeDrop(e: React.DragEvent, targetFolderId: string | null) {
-  const noteId = e.dataTransfer.getData(NOTE_MIME);
-  const folderId = e.dataTransfer.getData(FOLDER_MIME);
+/** Droppable id of the "All Notes" root row (target folder = null). */
+const ROOT_DROP_ID = "root";
+/** Droppable id prefix for folder rows. */
+const FOLDER_DROP_PREFIX = "folderdrop:";
+
+// Checked by the hover-preview timers: pointer events keep firing during a
+// pointer-based drag, and a preview card popping up mid-drag is just noise.
+let treeDragActive = false;
+
+/** Move a dragged note or folder into the target folder (null = root). */
+async function performTreeMove(data: TreeDragData, targetFolderId: string | null) {
   const st = useStore.getState();
   try {
-    if (noteId) {
-      await api.moveNote(noteId, targetFolderId);
+    if (data.kind === "note") {
+      await api.moveNote(data.id, targetFolderId);
       await st.refreshNotes();
-      if (st.selectedNote?.id === noteId) void st.selectNote(noteId);
-    } else if (folderId && folderId !== targetFolderId) {
-      await api.moveFolder(folderId, targetFolderId);
+      if (st.selectedNote?.id === data.id) void st.selectNote(data.id);
+    } else if (data.id !== targetFolderId) {
+      // The backend refuses moves into a folder's own subtree.
+      await api.moveFolder(data.id, targetFolderId);
       await st.refreshFolders();
     }
   } catch (err) {
     st.toast(String(err), "error");
   }
+}
+
+/** The "All Notes" root row as a drop target — render-prop so the row keeps
+ *  its own state-dependent styling. */
+function RootDropArea({ children }: { children: (isOver: boolean) => React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: ROOT_DROP_ID });
+  return <div ref={setNodeRef}>{children(isOver)}</div>;
 }
 
 function loadExpanded(): Record<string, boolean> {
@@ -112,14 +142,53 @@ export default function Sidebar() {
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const selectedNoteId = useStore((s) => s.selectedNote?.id ?? null);
   const settings = useStore((s) => s.settings);
+  const arrangePlan = useStore((s) => s.arrangePlan);
+  const arrangePlanning = useStore((s) => s.arrangePlanning);
+  const similarGroups = useStore((s) => s.similarGroups);
+  const similarFinding = useStore((s) => s.similarFinding);
   const [addingRoot, setAddingRoot] = useState(false);
   const [titlingAll, setTitlingAll] = useState(false);
   const [retagging, setRetagging] = useState(false);
   const [confirmRetag, setConfirmRetag] = useState(false);
-  const [rootDropHover, setRootDropHover] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(
     () => localStorage.getItem("nn.tagsOpen") !== "0",
   );
+
+  /** Row riding the DragOverlay, null when no tree drag is in flight. */
+  const [treeDrag, setTreeDrag] = useState<TreeDragData | null>(null);
+  // 6px activation distance keeps row clicks (open, expand, pin…) working.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const onTreeDragStart = (e: DragStartEvent) => {
+    const d = e.active.data.current as TreeDragData | undefined;
+    if (d) {
+      setTreeDrag(d);
+      treeDragActive = true;
+    }
+  };
+
+  const onTreeDragCancel = () => {
+    setTreeDrag(null);
+    treeDragActive = false;
+  };
+
+  const onTreeDragEnd = (e: DragEndEvent) => {
+    const data = e.active.data.current as TreeDragData | undefined;
+    onTreeDragCancel();
+    if (!data || !e.over) return;
+    const overId = String(e.over.id);
+    const target =
+      overId === ROOT_DROP_ID
+        ? null
+        : overId.startsWith(FOLDER_DROP_PREFIX)
+          ? overId.slice(FOLDER_DROP_PREFIX.length)
+          : undefined;
+    if (target === undefined) return;
+    if (target !== null) setExpanded(target, true);
+    void performTreeMove(data, target);
+  };
 
   const [width, setWidth] = useState(() => {
     const v = Number(localStorage.getItem("nn.sidebarWidth"));
@@ -304,6 +373,13 @@ export default function Sidebar() {
   }
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      collisionDetection={pointerWithin}
+      onDragStart={onTreeDragStart}
+      onDragEnd={onTreeDragEnd}
+      onDragCancel={onTreeDragCancel}
+    >
     <aside
       className="relative flex shrink-0 flex-col bg-stone-900/40"
       style={{ width }}
@@ -398,48 +474,39 @@ export default function Sidebar() {
         ) : (
           <div className="px-2 pb-2">
             {/* the explorer root — hover for a new folder, drop to unfile */}
-            <div
-              onDragOver={(e) => {
-                if (hasTreePayload(e)) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  setRootDropHover(true);
-                }
-              }}
-              onDragLeave={() => setRootDropHover(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setRootDropHover(false);
-                void handleTreeDrop(e, null);
-              }}
-              className={`group flex items-center rounded-lg transition-colors ${
-                rootDropHover
-                  ? "bg-clay-600/15 ring-1 ring-inset ring-clay-500"
-                  : view.kind === "all"
-                    ? "bg-clay-600/15"
-                    : "hover:bg-stone-800/60"
-              }`}
-            >
-              <button
-                onClick={() => selectView({ kind: "all", key: null })}
-                className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
-                  view.kind === "all" ? "text-clay-300" : "text-stone-300"
-                }`}
-              >
-                <Inbox size={15} />
-                All Notes
-              </button>
-              <span className="mr-2 text-[10px] text-stone-600 group-hover:hidden">
-                {notes.length}
-              </span>
-              <button
-                onClick={() => setAddingRoot(true)}
-                className="mr-1.5 hidden shrink-0 cursor-pointer rounded p-0.5 text-stone-500 hover:text-stone-200 group-hover:block"
-                title="New folder"
-              >
-                <FolderPlus size={13} />
-              </button>
-            </div>
+            <RootDropArea>
+              {(rootOver) => (
+                <div
+                  className={`group flex items-center rounded-lg transition-colors ${
+                    rootOver
+                      ? "bg-clay-600/15 ring-1 ring-inset ring-clay-500"
+                      : view.kind === "all"
+                        ? "bg-clay-600/15"
+                        : "hover:bg-stone-800/60"
+                  }`}
+                >
+                  <button
+                    onClick={() => selectView({ kind: "all", key: null })}
+                    className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${
+                      view.kind === "all" ? "text-clay-300" : "text-stone-300"
+                    }`}
+                  >
+                    <Inbox size={15} />
+                    All Notes
+                  </button>
+                  <span className="mr-2 text-[10px] text-stone-600 group-hover:hidden">
+                    {notes.length}
+                  </span>
+                  <button
+                    onClick={() => setAddingRoot(true)}
+                    className="mr-1.5 hidden shrink-0 cursor-pointer rounded p-0.5 text-stone-500 hover:text-stone-200 group-hover:block"
+                    title="New folder"
+                  >
+                    <FolderPlus size={13} />
+                  </button>
+                </div>
+              )}
+            </RootDropArea>
             {addingRoot && (
               <FolderNameInput
                 onDone={async (name) => {
@@ -477,28 +544,76 @@ export default function Sidebar() {
                 </button>
               )}
 
-            {tagFilter.length === 0 && notes.length >= 4 && (
-              <button
-                onClick={() => useStore.getState().setSimilarOpen(true)}
-                title="Find clusters of overlapping notes and merge them"
-                className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-stone-500 transition-colors hover:text-clay-300"
-              >
-                <Combine size={11} />
-                Tidy up similar notes
-              </button>
-            )}
+            {tagFilter.length === 0 &&
+              (notes.length >= 4 || similarGroups !== null || similarFinding) && (
+                <button
+                  onClick={() => {
+                    const st = useStore.getState();
+                    if (st.similarGroups) {
+                      st.setSimilarOpen(true);
+                    } else {
+                      void st.startFindSimilar();
+                    }
+                  }}
+                  disabled={similarFinding}
+                  title={
+                    similarGroups
+                      ? "Merge suggestions are ready — review before anything changes"
+                      : "Scan for overlapping notes in the background — you'll be told when results are ready"
+                  }
+                  className={`flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium transition-colors disabled:opacity-60 ${
+                    similarGroups
+                      ? "text-sage-400 hover:text-sage-300"
+                      : "text-stone-500 hover:text-clay-300"
+                  }`}
+                >
+                  {similarFinding ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <Combine size={11} />
+                  )}
+                  {similarFinding
+                    ? "Scanning for similar notes…"
+                    : similarGroups
+                      ? `Review ${similarGroups.length} merge suggestion${similarGroups.length === 1 ? "" : "s"}`
+                      : "Tidy up similar notes"}
+                </button>
+              )}
 
             {settings?.llm_backend !== "none" &&
               tagFilter.length === 0 &&
-              unfiled.length >= 3 && (
+              (unfiled.length >= 3 || arrangePlan !== null || arrangePlanning) && (
                 <button
-                  onClick={() => useStore.getState().setArrangeOpen(true)}
-                  title="Let the AI propose folders for unfiled notes — you review before anything moves"
-                  className="flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium text-stone-500 transition-colors hover:text-clay-300"
+                  onClick={() => {
+                    const st = useStore.getState();
+                    if (st.arrangePlan) {
+                      st.setArrangeOpen(true);
+                    } else {
+                      void st.startAutoArrange();
+                    }
+                  }}
+                  disabled={arrangePlanning}
+                  title={
+                    arrangePlan
+                      ? "The plan is ready — review before anything moves"
+                      : "Plan folders for unfiled notes in the background — you review before anything moves"
+                  }
+                  className={`flex cursor-pointer items-center gap-1 px-2.5 pb-1 pt-0.5 text-[10px] font-medium transition-colors disabled:opacity-60 ${
+                    arrangePlan
+                      ? "text-sage-400 hover:text-sage-300"
+                      : "text-stone-500 hover:text-clay-300"
+                  }`}
                 >
-                  <Wand2 size={11} />
-                  Auto-arrange {unfiled.length} unfiled note
-                  {unfiled.length === 1 ? "" : "s"}
+                  {arrangePlanning ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <Wand2 size={11} />
+                  )}
+                  {arrangePlanning
+                    ? "Planning arrangement…"
+                    : arrangePlan
+                      ? "Review auto-arrange plan"
+                      : `Auto-arrange ${unfiled.length} unfiled note${unfiled.length === 1 ? "" : "s"}`}
                 </button>
               )}
 
@@ -511,7 +626,7 @@ export default function Sidebar() {
                 </p>
                 <div className="mt-0.5">
                   {pinnedNotes.map((n) => (
-                    <TreeNoteRow key={`pin-${n.id}`} note={n} depth={0} />
+                    <TreeNoteRow key={`pin-${n.id}`} note={n} depth={0} dragInstance="pin" />
                   ))}
                 </div>
               </>
@@ -622,6 +737,20 @@ export default function Sidebar() {
         title="Drag to resize"
       />
     </aside>
+    {/* The row riding the pointer while dragging a note or folder. */}
+    <DragOverlay>
+      {treeDrag ? (
+        <div className="pointer-events-none flex w-fit max-w-60 items-center gap-1.5 rounded-lg border border-clay-600/70 bg-stone-900 px-2.5 py-1 text-xs text-stone-200 shadow-2xl shadow-black/60">
+          {treeDrag.kind === "folder" ? (
+            <FolderIcon size={13} className="shrink-0 text-stone-500" />
+          ) : (
+            <FileText size={12} className="shrink-0 text-stone-600" />
+          )}
+          <span className="truncate">{treeDrag.label}</span>
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -1056,8 +1185,22 @@ async function duplicateNote(note: Note) {
 /** A note leaf inside the explorer tree: status icons + hover preview card.
  *  Memoized — worker bursts replace single notes in the store; rows whose
  *  note object is unchanged skip re-rendering. */
-const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; depth: number }) {
+const TreeNoteRow = memo(function TreeNoteRow({
+  note,
+  depth,
+  dragInstance = "note",
+}: {
+  note: Note;
+  depth: number;
+  /** Disambiguates duplicate rows (a pinned note also sits in the tree) —
+   *  dnd-kit draggable ids must be unique. */
+  dragInstance?: string;
+}) {
   const active = useStore((s) => s.selectedNote?.id === note.id);
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: `${dragInstance}:${note.id}`,
+    data: { kind: "note", id: note.id, label: noteDisplayTitle(note) } satisfies TreeDragData,
+  });
   // Live worker target — covers bulk titling/re-tagging/merging, which run
   // outside the status-flag pipeline.
   const aiActive = useStore((s) => s.queue?.current_note_id === note.id);
@@ -1071,9 +1214,11 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
     !working && (note.llm_status === "STALE" || note.embedding_status === "STALE");
 
   const startPreview = (e: React.MouseEvent) => {
+    if (treeDragActive) return; // mid-drag hovers aren't reading intent
     const rect = e.currentTarget.getBoundingClientRect();
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
+      if (treeDragActive) return;
       setPreview({
         left: Math.min(rect.right + 10, window.innerWidth - PREVIEW_W - 8),
         top: Math.max(8, Math.min(rect.top, window.innerHeight - 240)),
@@ -1086,12 +1231,15 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
   };
   useEffect(() => stopPreview, []);
 
+  const hoverMode = useStore((s) => s.settings?.hover_preview ?? "summary");
   // Only computed while the hover card is actually showing.
-  const snippet = preview ? stripMarkdown(note.content).slice(0, 220) : "";
+  const snippet = preview ? notePreview(note, hoverMode, 220) : null;
 
   return (
     <>
       <button
+        ref={setNodeRef}
+        {...listeners}
         onClick={() => {
           stopPreview();
           void useStore.getState().selectNote(note.id);
@@ -1103,17 +1251,11 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
           stopPreview();
           setMenu({ x: e.clientX, y: e.clientY });
         }}
-        draggable
-        onDragStart={(e) => {
-          stopPreview();
-          e.dataTransfer.setData(NOTE_MIME, note.id);
-          e.dataTransfer.effectAllowed = "move";
-        }}
         className={`flex w-full cursor-pointer items-center gap-1.5 rounded-lg py-1 pr-2 text-left text-[12.5px] transition-colors ${
           active
             ? "bg-stone-800/80 text-stone-100"
             : "text-stone-400 hover:bg-stone-800/40 hover:text-stone-200"
-        }`}
+        } ${isDragging ? "opacity-40" : ""}`}
         style={{ paddingLeft: 21 + depth * 14 }}
       >
         <FileText size={12} className="shrink-0 text-stone-600" />
@@ -1148,9 +1290,14 @@ const TreeNoteRow = memo(function TreeNoteRow({ note, depth }: { note: Note; dep
             {working && " · AI working…"}
             {queued && " · queued for AI"}
           </p>
-          {snippet ? (
-            <p className="mt-1.5 line-clamp-5 text-[11px] leading-relaxed text-stone-400">
-              {snippet}
+          {snippet?.text ? (
+            <p className="mt-1.5 line-clamp-5 whitespace-pre-line text-[11px] leading-relaxed text-stone-400">
+              {snippet.isSummary && (
+                <span title="AI summary" className="mr-1 inline-flex align-baseline">
+                  <Sparkles size={9} className="text-sage-500" />
+                </span>
+              )}
+              {snippet.text}
             </p>
           ) : (
             <p className="mt-1.5 text-[11px] italic text-stone-600">Empty note</p>
@@ -1231,8 +1378,21 @@ const FolderNode = memo(function FolderNode({
   const [renaming, setRenaming] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [dropHover, setDropHover] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // The row is both a drag source (re-parent the folder) and a drop target
+  // (file notes/folders into it). Child rows are DOM siblings, not children,
+  // so nested folders never fight over the same pointer event.
+  const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `folder:${folder.id}`,
+    data: { kind: "folder", id: folder.id, label: folder.name } satisfies TreeDragData,
+  });
+  const { setNodeRef: setDropRef, isOver, active: dragged } = useDroppable({
+    id: FOLDER_DROP_PREFIX + folder.id,
+  });
+  // Hovering its own row while being dragged isn't a valid target.
+  const dropHover =
+    isOver && (dragged?.data.current as TreeDragData | undefined)?.id !== folder.id;
 
   const deleteFolder = async () => {
     await api.deleteFolder(folder.id);
@@ -1268,40 +1428,23 @@ const FolderNode = memo(function FolderNode({
   return (
     <div>
       <div
-        draggable
-        onDragStart={(e) => {
-          e.stopPropagation();
-          e.dataTransfer.setData(FOLDER_MIME, folder.id);
-          e.dataTransfer.effectAllowed = "move";
+        ref={(el) => {
+          setDragRef(el);
+          setDropRef(el);
         }}
-        onDragOver={(e) => {
-          if (hasTreePayload(e)) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = "move";
-            setDropHover(true);
-          }
-        }}
-        onDragLeave={() => setDropHover(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setDropHover(false);
-          ctx.setExpanded(folder.id, true);
-          void handleTreeDrop(e, folder.id);
-        }}
+        {...listeners}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setMenu({ x: e.clientX, y: e.clientY });
         }}
-        className={`group flex items-center gap-1 rounded-lg px-1 py-1 text-sm transition-colors ${
+        className={`group flex select-none items-center gap-1 rounded-lg px-1 py-1 text-sm transition-colors ${
           dropHover
             ? "bg-clay-600/15 text-clay-300 ring-1 ring-inset ring-clay-500"
             : active
               ? "bg-clay-600/15 text-clay-300"
               : "text-stone-300 hover:bg-stone-800/60"
-        } ${dimmed ? "opacity-50" : ""}`}
+        } ${dimmed ? "opacity-50" : ""} ${isDragging ? "opacity-40" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
       >
         <button

@@ -73,6 +73,8 @@ export const api = {
   setBoardLink: (noteId: string, anchorId: string | null) =>
     invoke<void>("set_board_link", { noteId, anchorId }),
   clearBoardLink: (noteId: string) => invoke<void>("clear_board_link", { noteId }),
+  /** Persist a hand ordering of one Board group (rank = array position). */
+  setBoardOrder: (noteIds: string[]) => invoke<void>("set_board_order", { noteIds }),
   staleIdeas: () => invoke<Note[]>("stale_ideas"),
 
   // folders & tags
@@ -95,6 +97,7 @@ export const api = {
     invoke<Note>("apply_note_rewrite", { noteId, content }),
   aiTitleUntitled: () => invoke<number>("ai_title_untitled"),
   aiRetagAll: () => invoke<number>("ai_retag_all"),
+  aiSummarizeNote: (noteId: string) => invoke<Note>("ai_summarize_note", { noteId }),
   aiSummarizeCollection: (kind: string, key: string) =>
     invoke<string>("ai_summarize_collection", { kind, key }),
   getCollectionSummary: (kind: string, key: string) =>

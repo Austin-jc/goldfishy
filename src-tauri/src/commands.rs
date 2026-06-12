@@ -685,6 +685,37 @@ pub async fn merge_notes(app: AppHandle, note_ids: Vec<String>) -> CmdResult<Not
 /// O(n²) cosine pass and the card grid both stay cheap.
 const BOARD_CAP: usize = 400;
 
+/// Hand-ranked notes first (ascending rank), everything else behind them in
+/// recency order — so a group the user arranged stays arranged while new
+/// arrivals append below.
+fn sort_board_notes(notes: &mut [Note], ranks: &HashMap<String, f64>) {
+    notes.sort_by(|a, b| match (ranks.get(&a.id), ranks.get(&b.id)) {
+        (Some(ra), Some(rb)) => ra.partial_cmp(rb).unwrap_or(std::cmp::Ordering::Equal),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => b.updated_at.cmp(&a.updated_at),
+    });
+}
+
+/// Persist a hand ordering of Board cards: rank = position in `note_ids`.
+/// The frontend sends the full new order of one group after a drop.
+#[tauri::command]
+pub async fn set_board_order(app: AppHandle, note_ids: Vec<String>) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let now = now_ms();
+    for (i, id) in note_ids.iter().enumerate() {
+        db.execute(
+            "INSERT INTO board_order(note_id, rank, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(note_id) DO UPDATE SET rank = excluded.rank,
+                                                updated_at = excluded.updated_at",
+            params![id, i as f64, now],
+        )
+        .map_err(estr)?;
+    }
+    Ok(())
+}
+
 /// Semantic clusters for the Board: cosine union-find over the most recent
 /// embedded notes at the tunable `board_cluster_threshold`. Hand corrections
 /// (board_links) always win — a corrected note ignores its cosine edges and
@@ -783,6 +814,17 @@ pub async fn board_clusters(app: AppHandle) -> CmdResult<BoardData> {
     }
 
     let db = state.db.lock().unwrap();
+    let ranks: HashMap<String, f64> = {
+        let mut stmt = db
+            .prepare("SELECT note_id, rank FROM board_order")
+            .map_err(estr)?;
+        let collected: HashMap<String, f64> = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)))
+            .map_err(estr)?
+            .filter_map(|r| r.ok())
+            .collect();
+        collected
+    };
     let mut clusters: Vec<BoardCluster> = Vec::new();
     let mut loose_ids: Vec<String> = Vec::new();
     for members in groups.into_values() {
@@ -810,7 +852,7 @@ pub async fn board_clusters(app: AppHandle) -> CmdResult<BoardData> {
             .unwrap_or(members[0]);
         let member_ids: Vec<String> = members.iter().map(|&i| ids[i].clone()).collect();
         let mut notes = db::get_notes_by_ids_excerpt(&db, &member_ids).map_err(eanyhow)?;
-        notes.sort_by_key(|n| std::cmp::Reverse(n.updated_at));
+        sort_board_notes(&mut notes, &ranks);
 
         // Label: the tag most members share — tags are the strongest topic
         // signal around (same reasoning as the auto-arrange prompt). Falls
@@ -849,7 +891,7 @@ pub async fn board_clusters(app: AppHandle) -> CmdResult<BoardData> {
     clusters.sort_by_key(|c| std::cmp::Reverse(c.notes.len()));
 
     let mut loose = db::get_notes_by_ids_excerpt(&db, &loose_ids).map_err(eanyhow)?;
-    loose.sort_by_key(|n| std::cmp::Reverse(n.updated_at));
+    sort_board_notes(&mut loose, &ranks);
 
     let corrected = corrected_idx.keys().map(|&i| ids[i].clone()).collect();
     Ok(BoardData {
@@ -1232,9 +1274,32 @@ pub async fn apply_note_rewrite(app: AppHandle, note_id: String, content: String
     Ok(note)
 }
 
+/// Generate (or refresh) one note's stored summary on demand. Broadcasts the
+/// updated note so cards, hover previews and lists pick it up everywhere.
+#[tauri::command]
+pub async fn ai_summarize_note(app: AppHandle, note_id: String) -> CmdResult<Note> {
+    let label = {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, &note_id).map_err(eanyhow)?;
+        let t = note.title.trim().to_string();
+        if t.is_empty() { "Untitled".to_string() } else { t }
+    };
+    queue::set_activity(&app, Some((format!("Summarizing “{label}”…"), Some(note_id.clone()))));
+    let res = ai::summarize_note(&app, &note_id).await.map_err(eanyhow);
+    queue::set_activity(&app, None);
+    if let Ok(note) = &res {
+        let _ = app.emit("note-updated", note);
+    }
+    res
+}
+
 #[tauri::command]
 pub async fn ai_summarize_collection(app: AppHandle, kind: String, key: String) -> CmdResult<String> {
-    ai::summarize_collection(&app, &kind, &key).await.map_err(eanyhow)
+    queue::set_activity(&app, Some(("Summarizing collection…".to_string(), None)));
+    let res = ai::summarize_collection(&app, &kind, &key).await.map_err(eanyhow);
+    queue::set_activity(&app, None);
+    res
 }
 
 #[derive(Serialize)]
@@ -1400,6 +1465,34 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> CmdResult<()
         let db = state.db.lock().unwrap();
         let old = db::load_settings(&db);
         db::save_settings(&db, &settings).map_err(eanyhow)?;
+
+        // Note summaries ride the LLM pipeline; queue the catch-up work when
+        // the feature turns on (notes without one) or the style changes
+        // (every note's summary is in the old shape).
+        if settings.llm_backend != "none" && settings.summarize_notes {
+            let became_available = old.llm_backend == "none";
+            let style_changed = old.summarize_notes
+                && !became_available
+                && old.note_summary_style != settings.note_summary_style;
+            let just_enabled = !old.summarize_notes || became_available;
+            if style_changed {
+                db.execute(
+                    "UPDATE notes SET llm_status = 'STALE'
+                     WHERE deleted_at IS NULL AND trim(content) != '' AND llm_status = 'CLEAN'",
+                    [],
+                )
+                .map_err(estr)?;
+            } else if just_enabled {
+                db.execute(
+                    "UPDATE notes SET llm_status = 'STALE'
+                     WHERE deleted_at IS NULL AND trim(content) != '' AND summary IS NULL
+                       AND llm_status = 'CLEAN'",
+                    [],
+                )
+                .map_err(estr)?;
+            }
+        }
+
         old.sidecar_binary != settings.sidecar_binary
             || old.model_path != settings.model_path
             || old.sidecar_port != settings.sidecar_port
@@ -1408,6 +1501,7 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> CmdResult<()
     if needs_sidecar_restart {
         ai::kill_sidecar(&app).await;
     }
+    queue::emit_status(&app);
     Ok(())
 }
 
@@ -1632,7 +1726,10 @@ fn sanitize_filename(s: &str) -> String {
 
 #[tauri::command]
 pub async fn plan_auto_arrange(app: AppHandle) -> CmdResult<Vec<ArrangeGroup>> {
-    ai::plan_arrange(&app).await.map_err(eanyhow)
+    queue::set_activity(&app, Some(("Planning auto-arrange…".to_string(), None)));
+    let res = ai::plan_arrange(&app).await.map_err(eanyhow);
+    queue::set_activity(&app, None);
+    res
 }
 
 /// Apply the accepted subset of an auto-arrange plan: create proposed folders

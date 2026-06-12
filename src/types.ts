@@ -24,6 +24,8 @@ export interface Note {
   pinned: boolean;
   /** ms epoch when soft-deleted (in Trash); null for live notes. */
   deleted_at: number | null;
+  /** AI-generated per-note summary (style per settings); null until generated. */
+  summary: string | null;
   score?: number;
   snippet?: string;
   /** Smart-search provenance: which engine(s) surfaced this result. */
@@ -112,6 +114,14 @@ export interface AppSettings {
   similar_merge_threshold: number;
   /** Cosine floor for Board clusters (topical groups, not duplicates). */
   board_cluster_threshold: number;
+  /** Keep an AI summary of every note up to date (LLM pipeline). */
+  summarize_notes: boolean;
+  /** Shape of note summaries. */
+  note_summary_style: "blurb" | "bullets" | "todos";
+  /** What Board sticky cards show (summary falls back to the excerpt). */
+  board_preview: "summary" | "excerpt";
+  /** What the explorer hover preview shows. */
+  hover_preview: "summary" | "excerpt";
 }
 
 export interface BackupResult {

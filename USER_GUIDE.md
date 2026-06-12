@@ -83,12 +83,19 @@ You can also type in the search box at the top of the left panel. There are thre
 
 Click the grid icon at the top of the left panel (or press **⌘⇧B**) and the writing area turns into a bulletin board of sticky-note cards. It has four views, switchable with the tabs at the top:
 
-- **Clusters** — the app groups related notes into labeled piles automatically (your coffee notes together, your project notes together…). Click **Tidy board** to re-group at any time. If the AI puts a note in the wrong pile, just **drag it to the right one** — the app remembers your correction forever and never moves that note again (it gets a small ✋ hand badge; right-click it and choose *Let AI place it again* to undo).
+- **Clusters** — the app groups related notes into labeled piles automatically (your coffee notes together, your project notes together…). Click **Tidy board** to re-group at any time. If the AI puts a note in the wrong pile, just **drag it to the right one** — the app remembers your correction forever and never moves that note again (it gets a small ✋ hand badge; right-click it and choose *Let AI place it again* to undo). You can also **drag a card around inside its own pile** to reorder it — your order sticks through re-tidies.
 - **Recent** — the last 15 notes you touched.
 - **Stale ideas** — notes you haven't opened in over a month that relate to what you're working on *now*. This is the "wait, I had a note about this!" view.
 - **Pinned** — every note you've pinned, as cards.
 
-Click any card to open the note. Clusters work without any AI setup — they use the same built-in "understanding" file as semantic search.
+The cards are real stickies, not just previews:
+
+- **Edit in place** — click a card's text (or the ✏️ pencil) and type straight into it; it autosaves as you go, Esc to finish. The ↗ button opens the full note in the editor when you want the real thing.
+- **Use them as to-do lists** — any checkboxes in a note (`- [ ]` lines) show up on its card and can be ticked right there; hover a to-do card and an **Add a to-do…** field appears at the bottom.
+- **Delete without a pop-up** — hover a card and click the 🗑; it turns red asking for one more click to confirm. The note goes to Trash (undoable from the toast), never straight to oblivion.
+- **Summaries on cards** — once AI is enabled, cards show each note's AI summary instead of its raw first lines (a little ✨ marks it). You can switch this back to plain note text in **Settings → Note Summaries & Previews**.
+
+Clusters work without any AI setup — they use the same built-in "understanding" file as semantic search.
 
 ---
 
@@ -98,9 +105,10 @@ Once AI is enabled (next section), GoldFishy can:
 
 - 🏷 **Auto-tag** — a few seconds after you stop typing, the app quietly adds three suggested tags to your note. AI tags look green with a ✨; your own tags look neutral. Don't like one? Hover over it and click the ×.
 - 📁 **Suggest a folder** — if a note seems to belong somewhere, a small banner appears: *"AI suggests filing this in …"* with **Move** and **Dismiss** buttons. Nothing moves unless you click Move.
-- 🪄 **Auto-arrange unfiled notes** — got a pile of notes sitting outside any folder? Click **Auto-arrange unfiled notes** in the sidebar (it appears when you have a few) and the AI proposes a folder for each one — only when the folder genuinely matches the note's topic, suggesting a new folder when several notes clearly belong together, and honestly saying "no suggestion" otherwise. The whole plan is yours to edit: untick anything, click **change** on any note to send it to a different folder (or type a brand-new folder name), and file the no-suggestion notes yourself from the same screen. Nothing moves until you click **Move**.
+- 🪄 **Auto-arrange unfiled notes** — got a pile of notes sitting outside any folder? Click **Auto-arrange unfiled notes** in the sidebar (it appears when you have a few). The planning happens **in the background** — keep writing — and a toast (plus a green **Review auto-arrange plan** link in the sidebar) tells you when the proposal is ready. The AI proposes a folder for each note — only when the folder genuinely matches the note's topic, suggesting a new folder when several notes clearly belong together, and honestly saying "no suggestion" otherwise. The whole plan is yours to edit: untick anything, **drag a note from one folder to another** (or onto the no-suggestion box to leave it out), click **change** on any note to send it to a different folder (or type a brand-new folder name), and file the no-suggestion notes yourself from the same screen. Nothing moves until you click **Move**. Same deal for **Tidy up similar notes** — the scan and the merges run in the background and you review every suggestion.
 - • **Auto-bullet** — wrote a messy brain-dump? Click **Auto-bullet** at the top of the note and a preview of the tidied bullet points appears — click **Keep** to apply it (the old text is saved to History) or **Discard** to keep your note as-is.
-- 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it.
+- ✨ **Note summaries** — the app keeps a short AI summary of every note as you write, shown on Board stickies and in the sidebar's hover preview. Pick the shape in **Settings → Note Summaries & Previews**: a one-line **blurb**, key-point **bullets**, or the note's **to-dos** — and choose per surface whether to show the summary or the raw note text. Right-click a Board card → **Refresh summary** to redo one on demand.
+- 📝 **Summarize a collection** — viewing a folder or tag, click **Summarize collection** under the search box to get a one-paragraph summary of everything in it. It runs in the background too — the bar pops open (or a toast appears, if you've navigated away) when it's done.
 - ✅ **Action items & reminders** — the AI also spots tasks and follow-ups in your notes ("call the dentist", "send the report by Friday") and proposes them in the **Actions panel** (the bell at the top of the left panel). Nothing is scheduled until you accept it. You can also highlight any text in a note and right-click it → **Add as action item** to file it yourself, instantly.
 
 ### The Actions panel (the bell 🔔)

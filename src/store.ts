@@ -1,11 +1,14 @@
 import { create } from "zustand";
 import { api, setDataDir } from "./api";
 import { applyLineNumbers, applyTheme, DEFAULT_THEME } from "./themes";
+import { noteDisplayTitle } from "./utils";
 import type {
   ActionItem,
   ActionSort,
   AppSettings,
+  ArrangeGroup,
   BoardMode,
+  CollectionSummary,
   Folder,
   Note,
   QueueStatus,
@@ -43,6 +46,13 @@ function recordRecent(id: string) {
   localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
 }
 
+/** The collection-summary scope implied by the current view + tag filter. */
+export function summaryScopeKey(view: View, tagFilter: string[]): string {
+  const kind = view.kind === "folder" ? "folder" : tagFilter.length === 1 ? "tag" : "all";
+  const key = kind === "folder" ? (view.key ?? "") : kind === "tag" ? tagFilter[0] : "";
+  return `${kind}:${key}`;
+}
+
 interface Store {
   ready: boolean;
   notes: Note[];
@@ -64,6 +74,17 @@ interface Store {
   similarOpen: boolean;
   /** "Auto-arrange unfiled notes" review modal. */
   arrangeOpen: boolean;
+  /** Background auto-arrange: a finished plan waiting for review. */
+  arrangePlan: ArrangeGroup[] | null;
+  arrangePlanning: boolean;
+  /** Background tidy-up: merge candidates waiting for review. */
+  similarGroups: Note[][] | null;
+  similarFinding: boolean;
+  /** First-note ids of similar groups with a merge in flight. */
+  mergingSimilar: string[];
+  /** Collection summaries: in-flight scopes and per-scope results. */
+  summaryWorking: Record<string, boolean>;
+  summaryCache: Record<string, CollectionSummary>;
   /** The Board replaces the editor pane while open. */
   boardOpen: boolean;
   /** Which curated feed the Board shows (persisted to localStorage). */
@@ -108,6 +129,19 @@ interface Store {
   setPaletteOpen: (b: boolean) => void;
   setSimilarOpen: (b: boolean) => void;
   setArrangeOpen: (b: boolean) => void;
+  /** Plan auto-arrange in the background; toasts "ready for review" when done. */
+  startAutoArrange: () => Promise<void>;
+  clearArrangePlan: () => void;
+  /** Scan for similar-note clusters in the background; toasts when done. */
+  startFindSimilar: () => Promise<void>;
+  /** Merge one reviewed group (keyed by its first note's id), off the UI path. */
+  mergeSimilarGroup: (groupKey: string) => Promise<void>;
+  dismissSimilarGroup: (groupKey: string) => void;
+  clearSimilarGroups: () => void;
+  /** Load a cached collection summary into the store (no LLM call). */
+  loadCollectionSummary: (kind: string, key: string) => Promise<void>;
+  /** Regenerate a collection summary in the background. */
+  generateCollectionSummary: (kind: string, key: string) => Promise<void>;
   setBoardOpen: (b: boolean) => void;
   setBoardMode: (m: BoardMode) => void;
   /** Import .md/.txt files (or folders of them) and toast the outcome. */
@@ -143,6 +177,13 @@ export const useStore = create<Store>((set, get) => ({
   paletteOpen: false,
   similarOpen: false,
   arrangeOpen: false,
+  arrangePlan: null,
+  arrangePlanning: false,
+  similarGroups: null,
+  similarFinding: false,
+  mergingSimilar: [],
+  summaryWorking: {},
+  summaryCache: {},
   boardOpen: false,
   boardMode: (["clusters", "recent", "stale", "pinned"] as const).find(
     (m) => m === localStorage.getItem("nn.boardMode"),
@@ -300,6 +341,120 @@ export const useStore = create<Store>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setSimilarOpen: (similarOpen) => set({ similarOpen }),
   setArrangeOpen: (arrangeOpen) => set({ arrangeOpen }),
+
+  startAutoArrange: async () => {
+    if (get().arrangePlanning) return;
+    set({ arrangePlanning: true });
+    try {
+      const plan = await api.planAutoArrange();
+      set({ arrangePlan: plan, arrangePlanning: false });
+      if (get().arrangeOpen) return; // already reviewing — the modal seeds itself
+      const n = plan.reduce((acc, g) => acc + g.notes.length, 0);
+      get().toast(
+        n > 0
+          ? `Auto-arrange plan ready — homes proposed for ${n} note${n === 1 ? "" : "s"}`
+          : "Auto-arrange found no confident homes — you can still file notes by hand",
+        n > 0 ? "success" : "info",
+        { label: "Review", run: () => get().setArrangeOpen(true) },
+      );
+    } catch (e) {
+      set({ arrangePlanning: false });
+      get().toast(String(e), "error");
+    }
+  },
+
+  clearArrangePlan: () => set({ arrangePlan: null }),
+
+  startFindSimilar: async () => {
+    if (get().similarFinding) return;
+    set({ similarFinding: true });
+    try {
+      const groups = await api.findSimilarNotes();
+      if (groups.length === 0) {
+        set({ similarFinding: false, similarGroups: null });
+        get().toast("No overlapping notes found — your collection is already tidy", "info");
+        return;
+      }
+      set({ similarGroups: groups, similarFinding: false });
+      if (get().similarOpen) return;
+      get().toast(
+        `Found ${groups.length} group${groups.length === 1 ? "" : "s"} of overlapping notes`,
+        "success",
+        { label: "Review", run: () => get().setSimilarOpen(true) },
+      );
+    } catch (e) {
+      set({ similarFinding: false });
+      get().toast(String(e), "error");
+    }
+  },
+
+  mergeSimilarGroup: async (groupKey) => {
+    const group = get().similarGroups?.find((g) => g[0]?.id === groupKey);
+    if (!group || get().mergingSimilar.includes(groupKey)) return;
+    set((s) => ({ mergingSimilar: [...s.mergingSimilar, groupKey] }));
+    try {
+      const merged = await api.mergeNotes(group.map((n) => n.id));
+      set((s) => ({
+        similarGroups: s.similarGroups?.filter((g) => g[0]?.id !== groupKey) ?? null,
+      }));
+      await get().refreshNotes();
+      void get().refreshTags();
+      void get().refreshTrash();
+      get().toast(
+        `Merged ${group.length} notes into “${noteDisplayTitle(merged)}”`,
+        "success",
+        { label: "Open", run: () => void get().selectNote(merged.id) },
+      );
+    } catch (e) {
+      get().toast(String(e), "error");
+    } finally {
+      set((s) => ({ mergingSimilar: s.mergingSimilar.filter((k) => k !== groupKey) }));
+    }
+  },
+
+  dismissSimilarGroup: (groupKey) =>
+    set((s) => ({
+      similarGroups: s.similarGroups?.filter((g) => g[0]?.id !== groupKey) ?? null,
+    })),
+
+  clearSimilarGroups: () => set({ similarGroups: null }),
+
+  loadCollectionSummary: async (kind, key) => {
+    const k = `${kind}:${key}`;
+    if (get().summaryCache[k]) return;
+    try {
+      const s = await api.getCollectionSummary(kind, key);
+      if (s) set((st) => ({ summaryCache: { ...st.summaryCache, [k]: s } }));
+    } catch {
+      // Non-critical; the bar just offers to generate.
+    }
+  },
+
+  generateCollectionSummary: async (kind, key) => {
+    const k = `${kind}:${key}`;
+    if (get().summaryWorking[k]) return;
+    set((s) => ({ summaryWorking: { ...s.summaryWorking, [k]: true } }));
+    try {
+      const summary = await api.aiSummarizeCollection(kind, key);
+      set((s) => ({
+        summaryCache: { ...s.summaryCache, [k]: { summary, updated_at: Date.now() } },
+      }));
+      // The bar opens itself when its scope is on screen; toast only when the
+      // user has navigated elsewhere in the meantime.
+      const st = get();
+      if (summaryScopeKey(st.view, st.tagFilter) !== k || st.searchResults !== null) {
+        st.toast("Collection summary ready", "success");
+      }
+    } catch (e) {
+      get().toast(String(e), "error");
+    } finally {
+      set((s) => {
+        const summaryWorking = { ...s.summaryWorking };
+        delete summaryWorking[k];
+        return { summaryWorking };
+      });
+    }
+  },
   setBoardOpen: (boardOpen) => set({ boardOpen }),
   setBoardMode: (boardMode) => {
     localStorage.setItem("nn.boardMode", boardMode);
@@ -322,7 +477,7 @@ export const useStore = create<Store>((set, get) => ({
           `Imported ${res.imported} note${res.imported === 1 ? "" : "s"}${skipped}`,
           "success",
           canArrange
-            ? { label: "Auto-arrange", run: () => get().setArrangeOpen(true) }
+            ? { label: "Auto-arrange", run: () => void get().startAutoArrange() }
             : undefined,
         );
       } else if (res.skipped > 0) {

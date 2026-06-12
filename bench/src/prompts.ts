@@ -267,6 +267,8 @@ export function buildOrganize(opts: OrganizeInput): BuiltRequest {
       tag_instructions: tagInstructions,
       folder_instructions: folderInstructions,
       actions_instructions: actionsInstructions,
+      // The bench doesn't grade note summaries — always run with them off.
+      summary_instructions: text(t, "summary_instructions_off"),
       title: truncateChars(opts.title, limit(t, "title")),
       content: truncateChars(opts.content, limit(t, "content")),
     }),

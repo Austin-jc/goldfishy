@@ -130,6 +130,8 @@ fn migrate(conn: &Connection) -> Result<()> {
         [],
     );
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN deleted_at INTEGER", []);
+    // Per-note AI summary (Settings → Summaries chooses the style).
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN summary TEXT", []);
     // Board corrections: a hand-placed note sticks with its anchor's cluster
     // across every re-tidy (NULL anchor = deliberately kept loose). One row
     // per note — the latest correction wins.
@@ -139,6 +141,15 @@ fn migrate(conn: &Connection) -> Result<()> {
             note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
             anchor_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
             created_at INTEGER NOT NULL
+        );
+
+        -- Hand ordering of Board cards inside a group: lower rank sorts first;
+        -- unranked notes trail in recency order. Global per note, so it holds
+        -- whichever cluster the note ends up in.
+        CREATE TABLE IF NOT EXISTS board_order (
+            note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+            rank REAL NOT NULL,
+            updated_at INTEGER NOT NULL
         );
         "#,
     )?;
@@ -150,14 +161,14 @@ pub fn ai_input(title: &str, content: &str) -> String {
     format!("{}\n\n{}", title, content)
 }
 
-const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at";
+const NOTE_COLS: &str = "id, title, content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at, summary";
 
 /// Same shape, but `content` trimmed server-side. List views only render short
 /// previews (≤220 chars after markdown stripping) and the editor loads full
 /// content via `get_note`, so list payloads/memory stay flat as notes grow.
 /// SQLite `substr` counts characters for TEXT, so this never splits a UTF-8
 /// code point.
-const NOTE_COLS_EXCERPT: &str = "id, title, substr(content, 1, 240) AS content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at";
+const NOTE_COLS_EXCERPT: &str = "id, title, substr(content, 1, 240) AS content, folder_id, created_at, updated_at, embedding_status, llm_status, suggested_folder_id, (embedding IS NOT NULL), pinned, deleted_at, summary";
 
 fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
     Ok(Note {
@@ -173,6 +184,7 @@ fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<Note> {
         has_embedding: row.get(9)?,
         pinned: row.get(10)?,
         deleted_at: row.get(11)?,
+        summary: row.get(12)?,
         tags: Vec::new(),
         score: None,
         snippet: None,

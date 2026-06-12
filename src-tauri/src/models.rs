@@ -21,6 +21,8 @@ pub struct Note {
     pub has_embedding: bool,
     pub pinned: bool,
     pub deleted_at: Option<i64>,
+    /// AI-generated per-note summary (style per settings); None until generated.
+    pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,6 +181,15 @@ pub struct AppSettings {
     /// Cosine floor for Board clusters — looser than merge (topical groups,
     /// not duplicates), tighter than related-notes.
     pub board_cluster_threshold: f32,
+    /// Keep an AI summary of every note up to date (LLM pipeline).
+    pub summarize_notes: bool,
+    /// Shape of note summaries: "blurb" | "bullets" | "todos".
+    pub note_summary_style: String,
+    /// What Board sticky cards show: "summary" | "excerpt" (summary falls
+    /// back to the excerpt while a note has no summary yet).
+    pub board_preview: String,
+    /// What the explorer hover preview shows: "summary" | "excerpt".
+    pub hover_preview: String,
 }
 
 impl Default for AppSettings {
@@ -207,6 +218,10 @@ impl Default for AppSettings {
             related_notes_threshold: 0.35,
             similar_merge_threshold: 0.80,
             board_cluster_threshold: 0.45,
+            summarize_notes: true,
+            note_summary_style: "blurb".into(),
+            board_preview: "summary".into(),
+            hover_preview: "summary".into(),
         }
     }
 }

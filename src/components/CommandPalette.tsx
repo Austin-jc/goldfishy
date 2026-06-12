@@ -95,7 +95,12 @@ function buildCommands(close: () => void): Command[] {
       icon: <Sparkles size={14} />,
       run: () => {
         close();
-        useStore.getState().setSimilarOpen(true);
+        const st = useStore.getState();
+        if (st.similarGroups) {
+          st.setSimilarOpen(true);
+        } else {
+          void st.startFindSimilar();
+        }
       },
     },
     ...(llmReady
@@ -105,7 +110,12 @@ function buildCommands(close: () => void): Command[] {
             icon: <Wand2 size={14} />,
             run: () => {
               close();
-              useStore.getState().setArrangeOpen(true);
+              const st = useStore.getState();
+              if (st.arrangePlan) {
+                st.setArrangeOpen(true);
+              } else {
+                void st.startAutoArrange();
+              }
             },
           } satisfies Command,
           {

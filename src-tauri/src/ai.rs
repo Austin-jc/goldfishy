@@ -667,6 +667,56 @@ fn reconcile_actions(
     Ok(())
 }
 
+/// The style instruction for note summaries, picked by the user's setting.
+/// The texts live in the `note_summary` task and are shared with the organize
+/// pipeline, so manual and background summaries always agree on shape.
+fn summary_style_text(style: &str) -> String {
+    match style {
+        "bullets" => prompts::text("note_summary", "style_bullets"),
+        "todos" => prompts::text("note_summary", "style_todos"),
+        _ => prompts::text("note_summary", "style_blurb"),
+    }
+}
+
+/// Generate (or refresh) one note's stored summary with the focused prompt.
+/// Writes only the `summary` column — a summary is derived data, so it never
+/// bumps `updated_at` or re-stales the AI pipelines.
+pub async fn summarize_note(app: &AppHandle, note_id: &str) -> Result<Note> {
+    let state = app.state::<AppState>();
+    let (title, content, style) = {
+        let db = state.db.lock().unwrap();
+        let note = db::get_note(&db, note_id)?;
+        if note.content.trim().is_empty() && note.title.trim().is_empty() {
+            bail!("Note is empty — nothing to summarize.");
+        }
+        let settings = db::load_settings(&db);
+        (note.title, note.content, settings.note_summary_style)
+    };
+
+    let t = "note_summary";
+    let title_for_prompt = if title.trim().is_empty() { "(untitled)" } else { title.trim() };
+    let user = prompts::fill(
+        prompts::text(t, "user"),
+        &[
+            ("summary_style", summary_style_text(&style).as_str()),
+            ("title", &truncate_chars(title_for_prompt, prompts::limit(t, "title"))),
+            ("content", &truncate_chars(&content, prompts::limit(t, "content"))),
+        ],
+    );
+    let reply = chat(app, prompts::text(t, "system"), &user, prompts::max_tokens(t), None).await?;
+    let summary = strip_fences(&reply);
+    if summary.trim().is_empty() {
+        bail!("LLM returned an empty summary");
+    }
+
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "UPDATE notes SET summary = ?1 WHERE id = ?2",
+        rusqlite::params![summary, note_id],
+    )?;
+    Ok(db::get_note(&db, note_id)?)
+}
+
 /// Restructure stream-of-consciousness text into concise markdown bullets.
 /// Returns the proposed markdown only — nothing is written. The editor shows
 /// a keep/discard preview and applies via `apply_note_rewrite`.
@@ -850,6 +900,15 @@ pub async fn organize_note(app: &AppHandle, note_id: &str) -> Result<Note> {
     } else {
         prompts::text(t, "actions_instructions_off").to_string()
     };
+    let want_summary = settings.summarize_notes && !note_content.trim().is_empty();
+    let summary_instructions = if want_summary {
+        prompts::fill(
+            prompts::text(t, "summary_instructions"),
+            &[("summary_style", summary_style_text(&settings.note_summary_style).as_str())],
+        )
+    } else {
+        prompts::text(t, "summary_instructions_off").to_string()
+    };
     let user = prompts::fill(
         prompts::text(t, "user"),
         &[
@@ -858,6 +917,7 @@ pub async fn organize_note(app: &AppHandle, note_id: &str) -> Result<Note> {
             ("tag_instructions", &tag_instructions),
             ("folder_instructions", &folder_instructions),
             ("actions_instructions", &actions_instructions),
+            ("summary_instructions", &summary_instructions),
             ("title", &truncate_chars(&note_title, prompts::limit(t, "title"))),
             ("content", &truncate_chars(&note_content, prompts::limit(t, "content"))),
         ],
@@ -912,6 +972,19 @@ pub async fn organize_note(app: &AppHandle, note_id: &str) -> Result<Note> {
     if want_actions {
         let extracted = parse_action_items(&parsed["items"]);
         reconcile_actions(app, note_id, &extracted)?;
+    }
+
+    if want_summary {
+        if let Some(raw) = parsed["summary"].as_str() {
+            let summary = strip_fences(raw);
+            if !summary.trim().is_empty() {
+                let db = state.db.lock().unwrap();
+                db.execute(
+                    "UPDATE notes SET summary = ?1 WHERE id = ?2",
+                    rusqlite::params![summary, note_id],
+                )?;
+            }
+        }
     }
 
     let db = state.db.lock().unwrap();

@@ -162,52 +162,45 @@ export function SummaryBar() {
   const view = useStore((s) => s.view);
   const tagFilter = useStore((s) => s.tagFilter);
   const settings = useStore((s) => s.settings);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  const [working, setWorking] = useState(false);
-  const [open, setOpen] = useState(false);
 
   // Scope: selected folder beats tag filter beats everything.
   const kind =
     view.kind === "folder" ? "folder" : tagFilter.length === 1 ? "tag" : "all";
   const key = kind === "folder" ? (view.key ?? "") : kind === "tag" ? tagFilter[0] : "";
+  const scopeKey = `${kind}:${key}`;
+
+  // Generation runs in the store, so it survives navigation; this bar is just
+  // a window onto whichever scope is selected.
+  const working = useStore((s) => Boolean(s.summaryWorking[scopeKey]));
+  const cached = useStore((s) => s.summaryCache[scopeKey]);
+  const [open, setOpen] = useState(false);
+  const wasWorking = useRef(false);
 
   useEffect(() => {
-    setSummary(null);
-    setUpdatedAt(null);
     setOpen(false);
-    void api.getCollectionSummary(kind, key).then((s) => {
-      if (s) {
-        setSummary(s.summary);
-        setUpdatedAt(s.updated_at);
-      }
-    });
+    void useStore.getState().loadCollectionSummary(kind, key);
   }, [kind, key]);
+
+  // A generation we watched just finished for this scope — show the result.
+  useEffect(() => {
+    if (wasWorking.current && !working && cached) setOpen(true);
+    wasWorking.current = working;
+  }, [working, cached]);
 
   if (settings?.llm_backend === "none") return null;
   // A summary of a multi-tag intersection would be misleading — single scopes only.
   if (view.kind !== "folder" && tagFilter.length > 1) return null;
 
-  const generate = async () => {
-    setWorking(true);
-    try {
-      const s = await api.aiSummarizeCollection(kind, key);
-      setSummary(s);
-      setUpdatedAt(Date.now());
-      setOpen(true);
-    } catch (e) {
-      useStore.getState().toast(String(e), "error");
-    } finally {
-      setWorking(false);
-    }
-  };
+  const generate = () => void useStore.getState().generateCollectionSummary(kind, key);
+  const summary = cached?.summary ?? null;
 
   return (
     <div className="px-4 pb-1">
       <div className="flex items-center gap-2">
         <button
-          onClick={() => (summary ? setOpen(!open) : void generate())}
+          onClick={() => (summary ? setOpen(!open) : generate())}
           disabled={working}
+          title={summary ? undefined : "Summarize in the background — you can keep working"}
           className="flex cursor-pointer items-center gap-1 text-[10px] font-medium text-clay-400 transition-colors hover:text-clay-300 disabled:opacity-60"
         >
           {working ? (
@@ -219,7 +212,7 @@ export function SummaryBar() {
         </button>
         {summary && !working && (
           <button
-            onClick={() => void generate()}
+            onClick={generate}
             className="cursor-pointer text-[10px] text-stone-600 transition-colors hover:text-stone-400"
           >
             regenerate
@@ -229,9 +222,9 @@ export function SummaryBar() {
       {open && summary && (
         <div className="fade-in mt-1.5 rounded-lg bg-stone-900 p-2.5 text-[11px] leading-relaxed text-stone-300">
           {summary}
-          {updatedAt && (
+          {cached?.updated_at && (
             <div className="mt-1 text-[9px] text-stone-600">
-              Generated {relativeTime(updatedAt)}
+              Generated {relativeTime(cached.updated_at)}
             </div>
           )}
         </div>
