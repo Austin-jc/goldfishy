@@ -1,10 +1,23 @@
-# Why the Board doesn't feel like stickies — and how to fix it
+# Stickies ≠ Notes — Wall redesign
 
-A design investigation (June 2026). Diagnosis grounded in the current code, research across sticky/canvas tools, and a concrete proposal: **separate stickies from notes as two different objects, with two-way conversion.**
+A design for separating **stickies** (ephemeral, spatial thoughts) from **notes** (durable, AI-enriched documents), with explicit two-way conversion. v2 (2026-06-17) locks the open decisions from v1's investigation; v1's diagnosis and research are preserved in §1–2.
+
+## Decisions locked (2026-06-17)
+
+| Question | Decision |
+|---|---|
+| **Capture paths** | All four: global quick-capture window, double-click the Wall, from a note/selection, and an in-app keyboard shortcut. Stickies are a first-class *capture target*, not just a Wall feature. |
+| **Storage** | Own `stickies` table, **fully searchable** — text stickies ride the cheap local **embedding** pass so they appear in semantic search; they never enter the **LLM** pass (no auto-title/tag/summary). |
+| **Wall spatiality** | Free placement on a fixed-width wall that scrolls vertically. Owned x/y, no zoom, no infinite canvas. |
+| **AI** | Summonable actions always available ("Tidy the wall", "Roll up"). Ambient hints (similar-sticky detection) off by default, behind a Settings toggle. |
+
+The two consequential follow-ons these created — *where off-Wall captures land* and *the embed-yes / LLM-no split* — are resolved in §3.3 (the **Inbox**) and §3.2.
+
+---
 
 ## 1. Diagnosis: we dressed documents up as stickies
 
-The Board today (`Board.tsx`, `board_clusters`) is an **AI-curated view over notes**: cluster/recent/stale/pinned feeds, rendered as cards in a responsive CSS grid. Each card is a full note — title, tags, summary, AI pipeline, folder, history. That's a genuinely useful surface (a "smart wall of your notes"), but it has none of the properties that make a sticky a sticky:
+The Board today (`Board.tsx`, `board_clusters`) is an **AI-curated view over notes**: cluster/recent/stale/pinned feeds rendered as cards in a responsive grid. Each card is a full note — title, tags, summary, AI pipeline, folder, history. A useful surface (a "smart wall of your notes"), but with none of the properties that make a sticky a sticky:
 
 | Physical sticky property | What it does for thinking | Board today |
 |---|---|---|
@@ -14,84 +27,132 @@ The Board today (`Board.tsx`, `board_clusters`) is an **AI-curated view over not
 | **Cheap to create, cheaper to discard** | Pre-cognitive capture; tossing one is frictionless | Creating = creating a *note* (title, file-ability, AI enrichment); deleting = trash ceremony |
 | **Messy, physical** | Feels like material, not records | Uniform grid, uniform styling — reads as a database view |
 
-The mismatch the user sensed is real and structural: **notes are documents** (durable, titled, filed, enriched, searchable for years); **stickies are thoughts** (ephemeral, small, colored, spatially owned, disposable). Projecting one into the costume of the other satisfies neither.
+The mismatch is real and structural: **notes are documents** (durable, titled, filed, enriched, searchable for years); **stickies are thoughts** (ephemeral, small, colored, spatially owned, disposable). Projecting one into the costume of the other satisfies neither.
 
-## 2. What the research says
+## 2. What the research said
 
-- **Obsidian Canvas is the canonical prior art for the split.** Canvas distinguishes *text cards* (lightweight, markdown, no file behind them, no backlinks/properties) from *note cards* (embedded vault files), and bridges them with right-click → **"Convert to file…"** ([Canvas docs](https://help.obsidian.md/Plugins/Canvas), [Obsidian Rocks guide](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/)). Exactly the two-object + conversion model proposed here.
-- **FigJam/Miro stickies codify the physicality**: square/index-card shapes, text grows vertically within a constrained width, hand-arranged position is the point, color is a first-class user property ([FigJam stickies](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam), [Miro stickies](https://miro.com/stickies-capture/)).
-- **Google Keep's lesson**: notes that are "fast, disposable, present-tense" want colored cards, pin/archive, *no folders* — a deliberately different contract from archive apps ([Keep vs. PKM comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/)). Trying to make one object serve both contracts is how apps end up satisfying neither.
-- **macOS Stickies (30 years old) survives on three properties**: always visible, spatially scattered by the user (spatial memory recall), zero ceremony ([Stickies history](https://en.wikipedia.org/wiki/Stickies_(Apple)), [guide](https://slashnote.app/blog/macos-sticky-notes-guide/)).
-- **2026 AI-UX consensus** (from the Round-2 research in `improvements.md`): the best AI is ignorable until summoned. Stickies are *pre-cognitive* — the one surface where AI should be off by default.
+- **Obsidian Canvas is the canonical prior art for the split.** It distinguishes *text cards* (lightweight markdown, no file behind them, no backlinks/properties) from *note cards* (embedded vault files), bridged by right-click → **"Convert to file…"** ([Canvas docs](https://help.obsidian.md/Plugins/Canvas), [Obsidian Rocks guide](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/)). Exactly the two-object + conversion model here.
+- **FigJam/Miro stickies codify the physicality**: index-card shapes, text grows vertically within a constrained width, hand-arranged position is the point, color is a first-class user property ([FigJam](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam), [Miro](https://miro.com/stickies-capture/)).
+- **Google Keep's lesson**: notes that are "fast, disposable, present-tense" want colored cards, pin/archive, *no folders* — and a fresh capture lands in a known place (top of the grid), not wherever the system guesses ([Keep vs PKM comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/)). This directly justifies the Inbox (§3.3).
+- **macOS Stickies (30 years old)** survives on three properties: always visible, spatially scattered *by the user*, zero ceremony ([Stickies history](https://en.wikipedia.org/wiki/Stickies_(Apple))).
+- **2026 AI-UX consensus** (Round-2 research in `improvements.md`): the best AI is ignorable until summoned. Stickies are *pre-cognitive* — the surface where AI defaults off.
 
-## 3. The conceptual fix
+## 3. The design
 
 > **A sticky is its own object, not a view of a note.** Notes and stickies convert into each other, explicitly, in both directions.
 
-- **Sticky**: plain text (no title), one of ~6 colors, an owner-placed position on a wall, created and discarded in one gesture. Excluded from the LLM organize pipeline. Indexed for keyword search only (so nothing is ever unfindable), never auto-tagged, auto-titled, or auto-summarized.
+### 3.1 The two objects
+
+- **Sticky**: plain text (no title), one of ~6 hand-chosen colors, an owner-placed position on the Wall. Created and discarded in one gesture. Two flavors:
+  - **Text sticky** — owns its text. Embedded for search; never LLM-processed.
+  - **Linked sticky** — a pointer to a note (`note_id` set). Shows the note's title + one summary line; double-click opens the note. Owns no text, so it is *not* embedded (the note already is). This is Obsidian's "note card."
 - **Note**: unchanged — the durable, AI-enriched document the rest of the app is built around.
-- **Promote** (sticky → note): the sticky's text becomes a new note's body; the existing pipeline titles/tags it. The sticky disappears (toast with Open + Undo). This is the "this thought turned out to matter" gesture.
-- **Stick** (note → sticky): creates a *linked* sticky — a pointer showing the note's title + a line of its summary, opening the note on double-click (Obsidian's "note card" flavor). The note itself never moves or changes. This is the "keep this on my radar" gesture.
 
-### The Wall
+### 3.2 The embed-yes / LLM-no split (storage decision, made precise)
 
-A new Board tab — and the Board's default landing — replacing the sticky *costume* with a sticky *surface*:
+"Fully searchable" must not smuggle document-ceremony back onto stickies. The app already runs two independent pipelines (`queue.rs`): **Queue 1** = local embeddings (cheap, fast); **Queue 2** = LLM (titling, tagging, routing, summarizing). The split:
 
-- **Fixed-bounds canvas** (scrolls vertically if needed; no zoom, no infinite canvas — see non-goals). Position persisted per sticky.
-- **Double-click empty space → sticky appears there, caret ready.** Esc / click-away commits. Empty sticky evaporates.
-- **Drag anywhere** (pointer-based per the Tauri DnD constraint; raw pointer handlers, simpler than dnd-kit for free placement). Slight lift shadow while dragging; gentle random rotation (±1.5°) at rest; `prefers-reduced-motion` respected.
-- **Width fixed (~200px), text grows vertically; soft cap ~280 chars.** Typing past the cap doesn't block — a quiet "Bigger than a sticky? → Promote to note" affordance appears. The constraint *is* the conversion prompt.
-- **Color swatch on hover/context menu** — classic yellow default plus 5 muted-palette options. Color is never assigned by AI.
-- **Discard = X with Undo toast** (undo-over-confirm, per house UX conventions — stickies are cheap, restoring must be too).
-- **Quick capture integration**: the capture window (⌘⇧N) gets a "sticky" toggle — fleeting thoughts land on the Wall instead of becoming untitled notes the AI then dutifully titles and tags (today's pipeline applies document ceremony to non-documents).
+- Text stickies **enter Queue 1 only** → semantic + keyword search, and the cosine signal that powers ambient hints (§3.6). Cheap, local, on-device — consistent with the standing principle that automatic work stays local.
+- Stickies **never enter Queue 2** → no titles, no tags, no folder routing, no summaries. The worker's Queue-2 pick query simply never sees them (separate table).
+- Linked stickies enter neither pipeline.
 
-### What happens to the existing Board modes
+So a sticky has `embedding` / `embedding_status` columns but no `llm_status`. That single asymmetry is the entire technical expression of "a thought, not a document."
 
-Clusters / Recent / Stale / Pinned stay — they're good *views*. But they stop pretending to be stickies:
+### 3.3 The Wall, and where captures land (the Inbox)
 
-- Re-labeled as what they are (e.g. tab group "Views" next to "Wall"), restyled as flat cards (current styling is fine), so the sticky visual language is reserved for actual stickies.
-- The semantic-correction machinery (`board_links`, sticky human placements vs. computed clusters) is untouched — it belongs to the Clusters view and remains one of its best ideas.
+A new Board surface — and the Board's default landing:
 
-### AI stance on the Wall
+- **Fixed-width canvas, scrolls vertically.** No zoom, no pan-infinite. Each sticky's x/y is persisted; `z` raises on drag (bring-to-front).
+- **Inbox strip** — a thin tray pinned to the top of the Wall holding **unplaced** stickies (`placed = 0`). Because three of the four capture paths happen while the Wall isn't even visible, the system must never fake spatial intent. Off-Wall captures pile into the Inbox in a known place (the Keep "new-to-top" pattern); dragging one down onto the wall sets `placed = 1` and is the act of placing it. The Inbox makes "not yet placed" a real, visible place rather than a guessed coordinate.
 
-Off by default; summonable, review-first, one-shot:
+Placement rules by capture path:
 
-- **"Tidy the wall"** (explicit button): proposes a spatial grouping of stickies as a preview overlay — accept or dismiss; never runs in the background, never moves a sticky silently (same consent pattern as auto-arrange).
-- **"Roll up"**: turn a hand-made cluster of stickies into one note (bullets = stickies), consuming them — the digital version of collecting the whiteboard after a workshop.
+| Path | Trigger | Lands |
+|---|---|---|
+| Double-click empty wall | in-app, Wall open | **Placed** at the click point, caret ready |
+| In-app shortcut | ⌘⇧K, Wall open | **Placed** near viewport center, focused |
+| In-app shortcut | ⌘⇧K, Wall closed | Inbox (opens the Wall) |
+| Global quick-capture | ⌘⇧N window + sticky toggle | Inbox |
+| From a note / selection | context menu "Stick to wall" | Inbox (linked or text sticky) |
 
-## 4. Data model & touchpoints (sketch)
+(The viewport-aware "placed vs Inbox" rule is tunable; the invariant is: *the system places a sticky only when you pointed at where it goes.*)
+
+### 3.4 Capture, in detail
+
+- **Double-click the Wall** → sticky appears there, caret ready. Esc / click-away commits; an empty sticky evaporates.
+- **Global quick-capture (⌘⇧N)** — the existing capture window gains a **note ⇄ sticky toggle** (remembers last choice). Sticky mode skips note creation entirely and drops to the Inbox. This fixes today's real wart: a fleeting thought captured via ⌘⇧N currently becomes an untitled *note* the LLM then dutifully titles and tags — document ceremony applied to a non-document.
+- **In-app keyboard (⌘⇧K)** — drops a sticky per the table above. One dedicated shortcut straight to sticky capture, no window switch.
+- **From a note / selection** — note context-menu (and editor text-selection menu) → **"Stick to wall"**. A note becomes a *linked* sticky; a text selection becomes a *text* sticky. The source note never moves or changes.
+
+### 3.5 Manipulation & feel
+
+- **Drag anywhere** (pointer-based — HTML5 DnD is dead in the Tauri webview; raw pointer handlers are simpler than dnd-kit for free placement). Slight lift shadow while dragging; gentle rest rotation (±1.5°); `prefers-reduced-motion` respected.
+- **Width fixed (~200px), text grows vertically; soft cap ~280 chars.** Typing past the cap never blocks — a quiet **"Bigger than a sticky? → Promote to note"** affordance appears. The size constraint *is* the conversion prompt.
+- **Color** via hover swatch / context menu — classic yellow default + 5 muted-palette options. Never assigned by AI.
+- **Discard = X with an Undo toast** (undo-over-confirm, per house UX conventions — stickies are cheap, so restoring one must be too). Stickies bypass the notes trash entirely; the Undo window is the whole safety net.
+
+### 3.6 Conversions
+
+- **Promote** (sticky → note): the sticky's text becomes a new note's body; the existing pipeline titles/tags/summarizes it. The sticky is consumed (toast: Open · Undo). The "this thought turned out to matter" gesture.
+- **Stick** (note → linked sticky): §3.4. The "keep this on my radar" gesture.
+- **Roll up** (cluster of stickies → one note): collects a hand-made group into a single note (each sticky a bullet), consuming them — the digital "collect the whiteboard after the workshop." Summonable button; never automatic.
+
+### 3.7 AI stance on the Wall
+
+- **Off by default.** Summonable, review-first, one-shot:
+  - **"Tidy the wall"** — proposes a spatial grouping of stickies as a preview overlay; accept or dismiss; never moves a sticky silently (same consent pattern as auto-arrange). Reuses the clustering machinery already behind `board_clusters`, now over sticky embeddings.
+  - **"Roll up"** — §3.6.
+- **Ambient hints** (Settings toggle, default off): as you drop or edit a sticky, a cheap cosine check against other stickies surfaces a dismissible *"similar to: …"* hint with a jump/merge affordance. Powered by the Queue-1 embeddings — no extra model, no cloud. This is the one place ambient AI is allowed, and only because the user opted in.
+
+### 3.8 Search integration
+
+A keyword/semantic search now returns both notes and stickies. Stickies carry a small sticky glyph in results; selecting one **opens the Wall and centers/pulses that sticky**. This reinforces that the Wall is a real, reachable surface, not a dead-end view.
+
+### 3.9 What happens to today's Board modes
+
+Clusters / Recent / Stale / Pinned are good *views over notes* — they stay, but stop pretending to be stickies:
+
+- Re-grouped under a "Views" tab next to "Wall", restyled as flat note cards (current styling is fine), so the sticky visual language is reserved for actual stickies.
+- The semantic-correction machinery (`board_links` — human placements overriding computed clusters) is untouched; it belongs to the Clusters view and remains one of its best ideas.
+
+## 4. Data model & touchpoints
 
 ```sql
 CREATE TABLE stickies (
   id TEXT PRIMARY KEY,
   text TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL DEFAULT 'yellow',
-  x REAL NOT NULL, y REAL NOT NULL,
-  z INTEGER NOT NULL DEFAULT 0,        -- raise on drag
-  note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,  -- non-null = linked sticky
+  x REAL NOT NULL DEFAULT 0,
+  y REAL NOT NULL DEFAULT 0,
+  z INTEGER NOT NULL DEFAULT 0,          -- raise on drag
+  placed INTEGER NOT NULL DEFAULT 0,     -- 0 = in Inbox, not yet hand-placed
+  note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,  -- non-null = linked pointer
+  embedding BLOB,                        -- text stickies only
+  embedding_status TEXT NOT NULL DEFAULT 'STALE',  -- linked stickies stay CLEAN (no-op)
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- + a small stickies_fts mirror for keyword search
 ```
 
-- Commands: `list_stickies`, `create_sticky`, `update_sticky` (text/color/position), `delete_sticky` (+ restore for Undo), `promote_sticky` (→ note, runs through `create_note`/`update_note` so the pipeline takes over), `stick_note` (note → linked sticky).
-- FTS: index `stickies.text` in a small separate FTS table surfaced in keyword search results with a sticky glyph; skip embeddings entirely (semantic search over 12-word thoughts adds nothing and costs a pipeline exception).
-- Queue/AI: no changes — stickies never enter Queue 1/2. The trash invariant doesn't apply (stickies bypass trash; Undo toast covers the regret window).
-- Frontend: `Wall.tsx` (new), Board tab wiring, capture-window toggle, note context-menu "Stick to wall", sidebar drag → wall is *not* needed in v1 (context menu covers it; cross-DndContext drag is real complexity for marginal gain).
+- **Commands**: `list_stickies`, `create_sticky`, `update_sticky` (text/color/x/y/z/placed), `delete_sticky` (+ `restore_sticky` for Undo), `promote_sticky` (→ note via `create_note`/`update_note` so the pipeline takes over), `stick_note` (note → linked sticky), `stick_text` (selection → text sticky).
+- **Worker**: Queue 1 picks up `embedding_status = 'STALE'` stickies alongside notes (text stickies only). Queue 2 untouched. The trash purge/invariant doesn't apply to stickies.
+- **Frontend**: `Wall.tsx` (new) + Inbox strip; Board tab wiring ("Wall" | "Views"); capture-window note⇄sticky toggle; ⌘⇧K binding; note context-menu + editor selection-menu "Stick to wall"; search-result sticky rendering + center-on-Wall; Settings toggle for ambient hints.
 
 ## 5. Deliberate non-goals
 
-- **No infinite canvas, no zoom, no connectors/arrows, no multiplayer** — that's FigJam/Miro territory and the fastest way to violate the "supercharged notepad, not a whiteboard suite" boundary in `motivations.md`.
-- **No sticky folders/tags/labels.** A wall that needs an org system has notes on it — promote them.
+- **No infinite canvas, no zoom, no connectors/arrows, no multiplayer** — FigJam/Miro territory; the fastest way to violate the "supercharged notepad, not a whiteboard suite" boundary in `motivations.md`.
+- **No sticky folders/tags/labels.** A wall that needs an org system has *notes* on it — promote them.
 - **No multiple walls in v1.** One wall keeps spatial memory honest (and matches a physical monitor edge). Revisit only if real use demands it.
-- **No rich text on stickies** beyond what plain markdown rendering gives for free. Headings on a sticky are a note begging to exist.
+- **No rich text** beyond what plain markdown rendering gives for free. A heading on a sticky is a note begging to exist.
+- **No LLM pipeline on stickies, ever.** Embeddings (local) yes; titles/tags/summaries no.
 
 ## 6. Phased plan
 
 | Phase | Scope | Size |
 |---|---|---|
-| 1 | `stickies` table + CRUD commands; Wall tab with double-click create, free drag, colors, discard+undo; promote-to-note; note→linked-sticky via context menu | M |
-| 2 | Capture-window "sticky" toggle; keyword-search surfacing; over-cap promote nudge; visual polish (rotation, lift, reduced-motion) | S |
-| 3 (opt-in) | "Tidy the wall" proposal overlay; "Roll up" cluster→note; sticky reminders | M |
+| 1 | `stickies` table + CRUD; Wall tab with double-click create, free drag, colors, discard+Undo; the Inbox; promote-to-note; note/selection → sticky; ⌘⇧K | M |
+| 2 | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (rotation, lift, reduced-motion) | M |
+| 3 (opt-in) | "Tidy the wall" proposal overlay; "Roll up" cluster→note; Settings ambient-hints toggle + similar-sticky detection; sticky reminders | M |
 
 **Sources:** [Obsidian Canvas](https://help.obsidian.md/Plugins/Canvas) · [Obsidian Rocks: Getting started with Canvas](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/) · [FigJam sticky notes](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam) · [Miro stickies capture](https://miro.com/stickies-capture/) · [Google Keep design comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/) · [Apple Stickies (Wikipedia)](https://en.wikipedia.org/wiki/Stickies_(Apple)) · [SlashNote: Mac sticky notes guide](https://slashnote.app/blog/macos-sticky-notes-guide/)
