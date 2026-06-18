@@ -152,7 +152,7 @@ CREATE TABLE stickies (
 | Phase | Scope | Size |
 |---|---|---|
 | 1 ✅ | `stickies` table + CRUD; Wall tab with double-click create, free drag, colors, discard+Undo; the Inbox; promote-to-note; note/selection → sticky; ⌘⇧K | M |
-| 2 | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (lift, reduced-motion) | M |
+| 2 ✅ | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (lift, reduced-motion) | M |
 | 3 (opt-in) | "Tidy the wall" proposal overlay; "Roll up" cluster→note; Settings ambient-hints toggle + similar-sticky detection; sticky reminders | M |
 
 **Phase 1 shipped (2026-06-17).** Notes:
@@ -160,5 +160,12 @@ CREATE TABLE stickies (
 - ⌘⇧K lands in the Inbox (a keyboard capture isn't a pointed placement) and opens the Wall in edit mode on it — the "viewport-center when Wall open" nuance is left for Phase 2.
 - Dropping a placed sticky onto the Inbox strip sends it back to the Inbox (`placed = false`).
 - Today's `Clusters/Recent/Stale/Pinned` stay as a tab group; the Wall is set apart from them with a divider rather than a full "Views" sub-grouping (deferred — purely cosmetic).
+- Polish (2026-06-18): text stickies hug their content; linked stickies carry a folded-corner "dog-ear" so they read as note-pointers regardless of color.
+
+**Phase 2 shipped (2026-06-18).** Notes:
+- Text stickies ride Queue 1 (local embeddings) + a `stickies_fts` mirror; they never touch Queue 2 (no `llm_status`). Linked stickies are excluded (the note they point at is already indexed). The embed/LLM split from §3.2 is now real in code.
+- `search_stickies` mirrors the note search (keyword / semantic / smart-RRF); the sidebar shows a "Stickies" group above "Notes" with a color dot, a ✨ meaning badge for semantic-only hits, and a snippet. Clicking opens the Wall and pulses the sticky into view.
+- The capture window (⌘⇧N) gained a persisted Note/Sticky toggle; sticky mode drops straight into the Inbox via `sticky-captured`.
+- Verified: a SQLite smoke test exercised the FTS insert/update/delete triggers + bm25 search; the search-results group was screenshot-verified; tsc + vite build + cargo check all green.
 
 **Sources:** [Obsidian Canvas](https://help.obsidian.md/Plugins/Canvas) · [Obsidian Rocks: Getting started with Canvas](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/) · [FigJam sticky notes](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam) · [Miro stickies capture](https://miro.com/stickies-capture/) · [Google Keep design comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/) · [Apple Stickies (Wikipedia)](https://en.wikipedia.org/wiki/Stickies_(Apple)) · [SlashNote: Mac sticky notes guide](https://slashnote.app/blog/macos-sticky-notes-guide/)
