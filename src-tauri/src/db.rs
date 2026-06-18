@@ -171,6 +171,38 @@ fn migrate(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_stickies_z ON stickies(z);
         "#,
     )?;
+
+    // Phase 2: text stickies become keyword + semantically searchable.
+    // Additive on the Phase-1 table — "duplicate column" on re-run is fine.
+    let _ = conn.execute("ALTER TABLE stickies ADD COLUMN embedding BLOB", []);
+    let _ = conn.execute(
+        "ALTER TABLE stickies ADD COLUMN embedding_status TEXT NOT NULL DEFAULT 'STALE'",
+        [],
+    );
+    let _ = conn.execute("ALTER TABLE stickies ADD COLUMN last_embed_input TEXT", []);
+    conn.execute_batch(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_stickies_embed_status ON stickies(embedding_status);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS stickies_fts USING fts5(
+            text, content='stickies', content_rowid='rowid',
+            tokenize='unicode61 remove_diacritics 2'
+        );
+        CREATE TRIGGER IF NOT EXISTS stickies_ai AFTER INSERT ON stickies BEGIN
+            INSERT INTO stickies_fts(rowid, text) VALUES (new.rowid, new.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS stickies_ad AFTER DELETE ON stickies BEGIN
+            INSERT INTO stickies_fts(stickies_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS stickies_au AFTER UPDATE OF text ON stickies BEGIN
+            INSERT INTO stickies_fts(stickies_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+            INSERT INTO stickies_fts(rowid, text) VALUES (new.rowid, new.text);
+        END;
+        "#,
+    )?;
+    // Backfill the index for stickies created before FTS existed (idempotent;
+    // bounded by the sticky count, which is small by design).
+    let _ = conn.execute("INSERT INTO stickies_fts(stickies_fts) VALUES('rebuild')", []);
     Ok(())
 }
 

@@ -1002,6 +1002,16 @@ pub async fn update_sticky(
         params![id, text, color, x, y, new_z, placed, now_ms()],
     )
     .map_err(estr)?;
+    // A text change re-stales the embedding (text stickies only — linked
+    // stickies have no own text and never embed). The frontend only sends
+    // `text` when it actually changed.
+    if text.is_some() {
+        db.execute(
+            "UPDATE stickies SET embedding_status = 'STALE' WHERE id = ?1 AND note_id IS NULL",
+            params![id],
+        )
+        .map_err(estr)?;
+    }
     db::get_sticky(&db, &id).map_err(eanyhow)
 }
 
@@ -1754,6 +1764,13 @@ pub async fn reindex_all(app: AppHandle) -> CmdResult<QueueStatus> {
                 .map_err(estr)?;
             }
         }
+        // Re-embed text stickies too (linked stickies carry no own text).
+        db.execute(
+            "UPDATE stickies SET embedding_status = 'STALE'
+             WHERE note_id IS NULL AND TRIM(text) != '' AND embedding_status != 'PENDING'",
+            [],
+        )
+        .map_err(estr)?;
     }
     state.sweep_active.store(true, Ordering::Relaxed);
     queue::queue_status(&app).map_err(eanyhow)

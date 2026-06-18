@@ -297,6 +297,77 @@ async fn tick(app: &AppHandle) -> Result<()> {
         }
     }
 
+    // ---------- Queue 1b: text-sticky embeddings ----------
+    // Same cheap local pipeline as notes; stickies never touch Queue 2.
+    if now >= state.embed_cooldown_until.load(Ordering::Relaxed) {
+        let debounce_ms = if sweep { 0 } else { settings.embed_debounce_secs as i64 * 1000 };
+        let batch: Vec<(String, String)> = {
+            let db = state.db.lock().unwrap();
+            let mut stmt = db.prepare(
+                "SELECT id, text FROM stickies
+                 WHERE embedding_status = 'STALE' AND note_id IS NULL
+                   AND TRIM(text) != '' AND updated_at <= ?1
+                 ORDER BY updated_at ASC LIMIT 8",
+            )?;
+            let rows = stmt.query_map(params![now - debounce_ms], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+
+        if !batch.is_empty() {
+            {
+                let db = state.db.lock().unwrap();
+                for (id, _) in &batch {
+                    db.execute(
+                        "UPDATE stickies SET embedding_status = 'PENDING' WHERE id = ?1",
+                        params![id],
+                    )?;
+                }
+            }
+            set_activity(
+                app,
+                Some((
+                    format!(
+                        "Indexing {} sticky note{}…",
+                        batch.len(),
+                        if batch.len() == 1 { "" } else { "s" }
+                    ),
+                    None,
+                )),
+            );
+            let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
+            match embed::embed_texts(app.clone(), texts).await {
+                Ok(vectors) => {
+                    let db = state.db.lock().unwrap();
+                    for ((id, input), vec) in batch.iter().zip(vectors.iter()) {
+                        db.execute(
+                            "UPDATE stickies SET embedding = ?1, embedding_status = 'CLEAN',
+                                    last_embed_input = ?2
+                             WHERE id = ?3 AND embedding_status = 'PENDING'",
+                            params![embed::to_blob(vec), input, id],
+                        )?;
+                    }
+                }
+                Err(e) => {
+                    {
+                        let db = state.db.lock().unwrap();
+                        for (id, _) in &batch {
+                            db.execute(
+                                "UPDATE stickies SET embedding_status = 'STALE' WHERE id = ?1 AND embedding_status = 'PENDING'",
+                                params![id],
+                            )?;
+                        }
+                    }
+                    state.embed_cooldown_until.store(now + 60_000, Ordering::Relaxed);
+                    let _ = app.emit("worker-error", format!("Sticky indexing: {e:#}"));
+                }
+            }
+            set_activity(app, None);
+            return Ok(());
+        }
+    }
+
     // ---------- Queue 2: heavy LLM pipeline ----------
     let llm_available = settings.llm_backend != "none";
     if llm_available && now >= state.llm_cooldown_until.load(Ordering::Relaxed) {
@@ -358,7 +429,17 @@ async fn tick(app: &AppHandle) -> Result<()> {
     // Sweep bookkeeping: done when nothing processable remains.
     if sweep {
         let status = queue_status(app)?;
-        let embed_done = status.embed_stale == 0 && status.embed_pending == 0;
+        let sticky_embed_pending: i64 = {
+            let db = state.db.lock().unwrap();
+            db.query_row(
+                "SELECT COUNT(*) FROM stickies
+                 WHERE embedding_status IN ('STALE','PENDING') AND note_id IS NULL AND TRIM(text) != ''",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0)
+        };
+        let embed_done = status.embed_stale == 0 && status.embed_pending == 0 && sticky_embed_pending == 0;
         let llm_done = !llm_available || (status.llm_stale == 0 && status.llm_pending == 0);
         if embed_done && llm_done {
             state.sweep_active.store(false, Ordering::Relaxed);
