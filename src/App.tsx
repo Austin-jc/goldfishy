@@ -127,14 +127,14 @@ export default function App() {
     };
   }, []);
 
-  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘J today's note,
-  // ⌘⇧F focus mode, ⌘, settings, ⌘+/−/0 zoom.
+  // Global shortcuts: ⌘K/⌘P palette, ⌘N new note, ⌘⇧K sticky capture,
+  // ⌘J today's note, ⌘⇧F focus mode, ⌘, settings, ⌘+/−/0 zoom.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
       const key = e.key.toLowerCase();
-      if (key === "k" || key === "p") {
+      if ((key === "k" && !e.shiftKey) || key === "p") {
         e.preventDefault();
         const st = useStore.getState();
         st.setPaletteOpen(!st.paletteOpen);
@@ -147,6 +147,10 @@ export default function App() {
         // Plain ⌘F stays the editor's find bar.
         e.preventDefault();
         useStore.getState().toggleFocusMode();
+      } else if (key === "k" && e.shiftKey) {
+        // ⌘⇧K — capture a sticky into the Inbox and open the Wall on it.
+        e.preventDefault();
+        void useStore.getState().quickCaptureSticky();
       } else if (key === "n") {
         e.preventDefault();
         void useStore.getState().createNote();

@@ -13,6 +13,8 @@ import type {
   Note,
   QueueStatus,
   SearchMode,
+  Sticky,
+  StickyColor,
   TagCount,
   View,
 } from "./types";
@@ -90,8 +92,13 @@ interface Store {
   focusMode: boolean;
   /** The Board replaces the editor pane while open. */
   boardOpen: boolean;
-  /** Which curated feed the Board shows (persisted to localStorage). */
+  /** Which Board surface is showing — the Wall, or a curated note feed. */
   boardMode: BoardMode;
+  /** Stickies loaded for the Wall (lazy: empty until the Wall first mounts). */
+  stickies: Sticky[];
+  stickiesLoaded: boolean;
+  /** A freshly-created sticky the Wall should open straight into edit mode. */
+  focusStickyId: string | null;
   sidebarCollapsed: boolean;
   theme: string;
   /** Editor line-number gutter (display-only, persisted to localStorage). */
@@ -150,6 +157,30 @@ interface Store {
   setBoardOpen: (b: boolean) => void;
   setBoardMode: (m: BoardMode) => void;
   toggleFocusMode: () => void;
+  /** Load every sticky for the Wall. */
+  refreshStickies: () => Promise<void>;
+  /** Create a text sticky; `placed` is true only on a Wall double-click. */
+  createSticky: (
+    text: string,
+    color: StickyColor,
+    x: number,
+    y: number,
+    placed: boolean,
+  ) => Promise<Sticky | null>;
+  /** Optimistically apply a partial sticky update, then persist it. */
+  saveSticky: (
+    id: string,
+    fields: Partial<Pick<Sticky, "text" | "color" | "x" | "y" | "placed">>,
+  ) => Promise<void>;
+  /** Discard a sticky with an Undo toast (stickies bypass the trash). */
+  discardSticky: (id: string) => Promise<void>;
+  /** Promote a text sticky to a note (consumes the sticky). */
+  promoteSticky: (id: string) => Promise<void>;
+  /** Spin a note off as a linked sticky in the Inbox. */
+  stickNoteToWall: (noteId: string) => Promise<void>;
+  /** ⌘⇧K: capture a blank sticky into the Inbox and open the Wall on it. */
+  quickCaptureSticky: () => Promise<void>;
+  setFocusSticky: (id: string | null) => void;
   /** Import .md/.txt files (or folders of them) and toast the outcome. */
   importNotePaths: (paths: string[]) => Promise<void>;
   toggleSidebar: () => void;
@@ -192,9 +223,12 @@ export const useStore = create<Store>((set, get) => ({
   summaryCache: {},
   focusMode: false,
   boardOpen: false,
-  boardMode: (["clusters", "recent", "stale", "pinned"] as const).find(
+  boardMode: (["wall", "clusters", "recent", "stale", "pinned"] as const).find(
     (m) => m === localStorage.getItem("nn.boardMode"),
-  ) ?? "clusters",
+  ) ?? "wall",
+  stickies: [],
+  stickiesLoaded: false,
+  focusStickyId: null,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
@@ -509,6 +543,100 @@ export const useStore = create<Store>((set, get) => ({
     localStorage.setItem("nn.boardMode", boardMode);
     set({ boardMode });
   },
+
+  refreshStickies: async () => {
+    try {
+      set({ stickies: await api.listStickies(), stickiesLoaded: true });
+    } catch (e) {
+      get().toast(String(e), "error");
+    }
+  },
+
+  createSticky: async (text, color, x, y, placed) => {
+    try {
+      const sticky = await api.createSticky(text, color, x, y, placed);
+      set((s) => ({ stickies: [...s.stickies, sticky] }));
+      return sticky;
+    } catch (e) {
+      get().toast(String(e), "error");
+      return null;
+    }
+  },
+
+  saveSticky: async (id, fields) => {
+    // Optimistic — drags and edits must feel instant; reconcile on response.
+    set((s) => ({
+      stickies: s.stickies.map((k) => (k.id === id ? { ...k, ...fields } : k)),
+    }));
+    try {
+      const updated = await api.updateSticky(id, fields);
+      set((s) => ({ stickies: s.stickies.map((k) => (k.id === id ? updated : k)) }));
+    } catch (e) {
+      get().toast(String(e), "error");
+      void get().refreshStickies();
+    }
+  },
+
+  discardSticky: async (id) => {
+    set((s) => ({ stickies: s.stickies.filter((k) => k.id !== id) }));
+    try {
+      const removed = await api.deleteSticky(id);
+      get().toast("Sticky discarded", "info", {
+        label: "Undo",
+        run: () => {
+          void api.restoreSticky(removed).then((r) => {
+            if (r) {
+              set((s) => ({ stickies: [...s.stickies.filter((k) => k.id !== r.id), r] }));
+            }
+          });
+        },
+      });
+    } catch (e) {
+      get().toast(String(e), "error");
+      void get().refreshStickies();
+    }
+  },
+
+  promoteSticky: async (id) => {
+    try {
+      const note = await api.promoteSticky(id);
+      set((s) => ({ stickies: s.stickies.filter((k) => k.id !== id) }));
+      await get().refreshNotes();
+      get().toast(`Promoted to note “${noteDisplayTitle(note)}”`, "success", {
+        label: "Open",
+        run: () => void get().selectNote(note.id),
+      });
+    } catch (e) {
+      get().toast(String(e), "error");
+    }
+  },
+
+  stickNoteToWall: async (noteId) => {
+    try {
+      const sticky = await api.stickNote(noteId);
+      set((s) => (s.stickiesLoaded ? { stickies: [...s.stickies, sticky] } : {}));
+      get().toast("Stuck to the wall — it's in the Inbox", "success", {
+        label: "Open wall",
+        run: () => {
+          get().setBoardMode("wall");
+          get().setBoardOpen(true);
+        },
+      });
+    } catch (e) {
+      get().toast(String(e), "error");
+    }
+  },
+
+  quickCaptureSticky: async () => {
+    // Keyboard capture isn't a pointed placement, so the sticky lands in the
+    // Inbox; the Wall opens with it in edit mode, ready to type.
+    const sticky = await get().createSticky("", "yellow", 0, 0, false);
+    if (!sticky) return;
+    get().setBoardMode("wall");
+    set({ boardOpen: true, focusMode: false, focusStickyId: sticky.id });
+  },
+
+  setFocusSticky: (focusStickyId) => set({ focusStickyId }),
 
   importNotePaths: async (paths) => {
     const { toast } = get();

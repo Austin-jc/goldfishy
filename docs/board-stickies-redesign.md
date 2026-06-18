@@ -151,8 +151,14 @@ CREATE TABLE stickies (
 
 | Phase | Scope | Size |
 |---|---|---|
-| 1 | `stickies` table + CRUD; Wall tab with double-click create, free drag, colors, discard+Undo; the Inbox; promote-to-note; note/selection → sticky; ⌘⇧K | M |
-| 2 | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (rotation, lift, reduced-motion) | M |
+| 1 ✅ | `stickies` table + CRUD; Wall tab with double-click create, free drag, colors, discard+Undo; the Inbox; promote-to-note; note/selection → sticky; ⌘⇧K | M |
+| 2 | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (lift, reduced-motion) | M |
 | 3 (opt-in) | "Tidy the wall" proposal overlay; "Roll up" cluster→note; Settings ambient-hints toggle + similar-sticky detection; sticky reminders | M |
+
+**Phase 1 shipped (2026-06-17).** Notes:
+- Soft cap (280 chars) shows the "Promote to note" nudge inside the editing sticky; rotation (±1.6°, reduced-motion aware) and lift shadow are in already.
+- ⌘⇧K lands in the Inbox (a keyboard capture isn't a pointed placement) and opens the Wall in edit mode on it — the "viewport-center when Wall open" nuance is left for Phase 2.
+- Dropping a placed sticky onto the Inbox strip sends it back to the Inbox (`placed = false`).
+- Today's `Clusters/Recent/Stale/Pinned` stay as a tab group; the Wall is set apart from them with a divider rather than a full "Views" sub-grouping (deferred — purely cosmetic).
 
 **Sources:** [Obsidian Canvas](https://help.obsidian.md/Plugins/Canvas) · [Obsidian Rocks: Getting started with Canvas](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/) · [FigJam sticky notes](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam) · [Miro stickies capture](https://miro.com/stickies-capture/) · [Google Keep design comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/) · [Apple Stickies (Wikipedia)](https://en.wikipedia.org/wiki/Stickies_(Apple)) · [SlashNote: Mac sticky notes guide](https://slashnote.app/blog/macos-sticky-notes-guide/)

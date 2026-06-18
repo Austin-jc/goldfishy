@@ -39,6 +39,7 @@ import {
   ScrollText,
   Settings,
   Sparkles,
+  StickyNote,
   Tag,
   Trash2,
   Undo2,
@@ -1445,6 +1446,11 @@ const TreeNoteRow = memo(function TreeNoteRow({
               label: "Duplicate",
               icon: <Copy size={13} />,
               onClick: () => void duplicateNote(note),
+            },
+            {
+              label: "Stick to wall",
+              icon: <StickyNote size={13} />,
+              onClick: () => void useStore.getState().stickNoteToWall(note.id),
             },
             {
               label: "Delete",

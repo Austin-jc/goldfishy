@@ -28,6 +28,7 @@ import {
   PinOff,
   RefreshCw,
   Sparkles,
+  StickyNote,
   Trash2,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ import {
   toggleTodoAtLine,
 } from "../utils";
 import ContextMenu from "./ContextMenu";
+import Wall from "./Wall";
 import type { BoardData, BoardMode, Note } from "../types";
 
 const RECENT_MAX = 15;
@@ -75,6 +77,20 @@ export default function Board() {
         <LayoutGrid size={16} className="text-clay-400" />
         <h1 className="text-sm font-semibold text-stone-100">Board</h1>
         <div className="ml-3 flex items-center gap-0.5 rounded-lg bg-stone-900 p-0.5">
+          {/* the Wall (stickies) — set apart from the note-feed Views */}
+          <button
+            onClick={() => setMode("wall")}
+            aria-pressed={mode === "wall"}
+            className={`flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors ${
+              mode === "wall"
+                ? "bg-stone-700/80 text-clay-300"
+                : "text-stone-500 hover:text-stone-300"
+            }`}
+          >
+            <StickyNote size={12} />
+            Wall
+          </button>
+          <span className="mx-0.5 h-4 w-px bg-stone-700/70" />
           {MODES.map((m) => (
             <button
               key={m.mode}
@@ -99,6 +115,7 @@ export default function Board() {
           <X size={15} />
         </button>
       </header>
+      {mode === "wall" && <Wall />}
       {mode === "clusters" && <ClustersBoard />}
       {mode === "recent" && <RecentBoard />}
       {mode === "stale" && <StaleBoard />}

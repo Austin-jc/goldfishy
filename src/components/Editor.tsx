@@ -40,6 +40,7 @@ import {
   Search,
   Sparkles,
   SquareCode,
+  StickyNote,
   Strikethrough,
   Tags,
   Trash2,
@@ -330,6 +331,21 @@ function EditorInner({ noteId }: { noteId: string }) {
     if (!text) return;
     e.preventDefault();
     setSelMenu({ x: e.clientX, y: e.clientY, text });
+  };
+
+  // A selection → a text sticky in the Inbox (the note is untouched).
+  const stickSelection = async (text: string) => {
+    const sticky = await useStore.getState().createSticky("", "yellow", 0, 0, false);
+    if (!sticky) return;
+    await useStore.getState().saveSticky(sticky.id, { text });
+    useStore.getState().toast("Stuck to the wall — it's in the Inbox", "success", {
+      label: "Open wall",
+      run: () => {
+        const st = useStore.getState();
+        st.setBoardMode("wall");
+        st.setBoardOpen(true);
+      },
+    });
   };
 
   const addSelectionAction = async (text: string) => {
@@ -667,6 +683,11 @@ function EditorInner({ noteId }: { noteId: string }) {
               label: "Add as action item",
               icon: <ListChecks size={13} />,
               onClick: () => void addSelectionAction(selMenu.text),
+            },
+            {
+              label: "Stick to wall",
+              icon: <StickyNote size={13} />,
+              onClick: () => void stickSelection(selMenu.text),
             },
             {
               label: "Copy",

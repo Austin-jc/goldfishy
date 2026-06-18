@@ -18,6 +18,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  StickyNote,
   Wand2,
   Zap,
 } from "lucide-react";
@@ -109,6 +110,25 @@ function buildCommands(close: () => void): Command[] {
       run: () => {
         close();
         useStore.getState().setBoardOpen(true);
+      },
+    },
+    {
+      label: "Capture a sticky",
+      hint: "⌘⇧K",
+      icon: <StickyNote size={14} />,
+      run: () => {
+        close();
+        void useStore.getState().quickCaptureSticky();
+      },
+    },
+    {
+      label: "Open the Wall",
+      icon: <StickyNote size={14} />,
+      run: () => {
+        close();
+        const st = useStore.getState();
+        st.setBoardMode("wall");
+        st.setBoardOpen(true);
       },
     },
     {

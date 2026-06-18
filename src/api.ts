@@ -16,6 +16,8 @@ import type {
   PromptOverrides,
   QueueStatus,
   SearchMode,
+  Sticky,
+  StickyColor,
   TagCount,
 } from "./types";
 
@@ -79,6 +81,30 @@ export const api = {
   /** Persist a hand ordering of one Board group (rank = array position). */
   setBoardOrder: (noteIds: string[]) => invoke<void>("set_board_order", { noteIds }),
   staleIdeas: () => invoke<Note[]>("stale_ideas"),
+
+  // stickies (the Wall)
+  listStickies: () => invoke<Sticky[]>("list_stickies"),
+  /** placed=true only when the user pointed at where it goes (Wall double-click). */
+  createSticky: (text: string, color: StickyColor, x: number, y: number, placed: boolean) =>
+    invoke<Sticky>("create_sticky", { text, color, x, y, placed }),
+  /** Partial update — pass only the fields that change. */
+  updateSticky: (
+    id: string,
+    fields: Partial<{
+      text: string;
+      color: StickyColor;
+      x: number;
+      y: number;
+      placed: boolean;
+    }>,
+  ) => invoke<Sticky>("update_sticky", { id, ...fields }),
+  deleteSticky: (id: string) => invoke<Sticky>("delete_sticky", { id }),
+  /** Re-insert a deleted sticky (Undo); null if its note has since vanished. */
+  restoreSticky: (sticky: Sticky) => invoke<Sticky | null>("restore_sticky", { sticky }),
+  /** Text sticky → new note (pipeline takes over); the sticky is consumed. */
+  promoteSticky: (id: string) => invoke<Note>("promote_sticky", { id }),
+  /** Note → linked sticky in the Inbox (the note is untouched). */
+  stickNote: (noteId: string) => invoke<Sticky>("stick_note", { noteId }),
 
   // folders & tags
   listFolders: () => invoke<Folder[]>("list_folders"),

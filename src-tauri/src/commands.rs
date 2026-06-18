@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
@@ -13,7 +13,7 @@ use crate::diff;
 use crate::embed;
 use crate::models::{
     ActionItem, AppSettings, ArrangeGroup, ArrangeMove, BoardCluster, BoardData, Folder,
-    ImportResult, Note, QueueStatus, TagCount,
+    ImportResult, Note, QueueStatus, Sticky, TagCount,
 };
 use crate::queue;
 use crate::state::AppState;
@@ -933,6 +933,163 @@ pub async fn clear_board_link(app: AppHandle, note_id: String) -> CmdResult<()> 
     db.execute("DELETE FROM board_links WHERE note_id = ?1", params![note_id])
         .map_err(estr)?;
     Ok(())
+}
+
+// ---------------------------------------------------------------- stickies
+
+#[tauri::command]
+pub async fn list_stickies(app: AppHandle) -> CmdResult<Vec<Sticky>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db::list_stickies(&db).map_err(eanyhow)
+}
+
+/// Create a text sticky. `placed` is true only when the user pointed at where
+/// it goes (a double-click on the Wall); off-Wall captures pass false and land
+/// in the Inbox.
+#[tauri::command]
+pub async fn create_sticky(
+    app: AppHandle,
+    text: String,
+    color: String,
+    x: f64,
+    y: f64,
+    placed: bool,
+) -> CmdResult<Sticky> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    let z = db::next_sticky_z(&db);
+    db.execute(
+        "INSERT INTO stickies(id, text, color, x, y, z, placed, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+        params![id, text, color, x, y, z, placed, now],
+    )
+    .map_err(estr)?;
+    db::get_sticky(&db, &id).map_err(eanyhow)
+}
+
+/// Partial update — only the provided fields change. A move (new x/y) also
+/// raises the sticky to the front (the one you just touched sits on top).
+#[tauri::command]
+pub async fn update_sticky(
+    app: AppHandle,
+    id: String,
+    text: Option<String>,
+    color: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
+    placed: Option<bool>,
+) -> CmdResult<Sticky> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let new_z: Option<i64> = if x.is_some() || y.is_some() {
+        Some(db::next_sticky_z(&db))
+    } else {
+        None
+    };
+    db.execute(
+        "UPDATE stickies SET
+            text = COALESCE(?2, text),
+            color = COALESCE(?3, color),
+            x = COALESCE(?4, x),
+            y = COALESCE(?5, y),
+            z = COALESCE(?6, z),
+            placed = COALESCE(?7, placed),
+            updated_at = ?8
+         WHERE id = ?1",
+        params![id, text, color, x, y, new_z, placed, now_ms()],
+    )
+    .map_err(estr)?;
+    db::get_sticky(&db, &id).map_err(eanyhow)
+}
+
+/// Hard delete — stickies bypass the notes trash; the returned object feeds an
+/// Undo toast (`restore_sticky`).
+#[tauri::command]
+pub async fn delete_sticky(app: AppHandle, id: String) -> CmdResult<Sticky> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let sticky = db::get_sticky(&db, &id).map_err(eanyhow)?;
+    db.execute("DELETE FROM stickies WHERE id = ?1", params![id])
+        .map_err(estr)?;
+    Ok(sticky)
+}
+
+/// Re-insert a deleted sticky (Undo). Same id keeps its identity; a linked
+/// sticky whose note has since vanished is silently dropped by the FK.
+#[tauri::command]
+pub async fn restore_sticky(app: AppHandle, sticky: Sticky) -> CmdResult<Option<Sticky>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    db.execute(
+        "INSERT INTO stickies(id, text, color, x, y, z, placed, note_id, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(id) DO NOTHING",
+        params![
+            sticky.id, sticky.text, sticky.color, sticky.x, sticky.y, sticky.z,
+            sticky.placed, sticky.note_id, sticky.created_at, now_ms()
+        ],
+    )
+    .map_err(estr)?;
+    Ok(db::get_sticky(&db, &sticky.id).ok())
+}
+
+/// Promote a text sticky to a full note: its text becomes the note body, the
+/// note enters the normal pipeline (title/tags/summary), and the sticky is
+/// consumed. Returns the new note.
+#[tauri::command]
+pub async fn promote_sticky(app: AppHandle, id: String) -> CmdResult<Note> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let sticky = db::get_sticky(&db, &id).map_err(eanyhow)?;
+    if sticky.note_id.is_some() {
+        return Err("This sticky already links to a note — open that note instead.".into());
+    }
+    let note_id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    db.execute(
+        "INSERT INTO notes(id, title, content, folder_id, created_at, updated_at,
+                           embedding_status, llm_status)
+         VALUES (?1, '', ?2, NULL, ?3, ?3, 'STALE', 'STALE')",
+        params![note_id, sticky.text, now],
+    )
+    .map_err(estr)?;
+    db.execute("DELETE FROM stickies WHERE id = ?1", params![id])
+        .map_err(estr)?;
+    state.last_activity.store(now, Ordering::Relaxed);
+    db::get_note(&db, &note_id).map_err(eanyhow)
+}
+
+/// Spin a note off as a *linked* sticky — a pointer that lands in the Inbox.
+/// The source note is never moved or changed.
+#[tauri::command]
+pub async fn stick_note(app: AppHandle, note_id: String) -> CmdResult<Sticky> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let exists = db
+        .query_row(
+            "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+            params![note_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(estr)?
+        .is_some();
+    if !exists {
+        return Err("That note no longer exists.".into());
+    }
+    let id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    let z = db::next_sticky_z(&db);
+    db.execute(
+        "INSERT INTO stickies(id, text, color, x, y, z, placed, note_id, created_at, updated_at)
+         VALUES (?1, '', 'blue', 0, 0, ?2, 0, ?3, ?4, ?4)",
+        params![id, z, note_id, now],
+    )
+    .map_err(estr)?;
+    db::get_sticky(&db, &id).map_err(eanyhow)
 }
 
 const STALE_AFTER_DAYS: i64 = 30;

@@ -90,6 +90,32 @@ pub struct BoardData {
     pub pending: i64,
 }
 
+/// A sticky on the Wall. A *text sticky* owns its `text`; a *linked sticky*
+/// (`note_id` set) is a pointer to a note, with `note_title`/`note_preview`
+/// resolved at list time. Stickies are their own object — never titled,
+/// tagged, summarized, or otherwise touched by the LLM pipeline.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Sticky {
+    pub id: String,
+    pub text: String,
+    pub color: String,
+    pub x: f64,
+    pub y: f64,
+    pub z: i64,
+    /// false = sitting in the Inbox, not yet hand-placed on the Wall. The
+    /// system only sets this true when the user pointed at where it goes.
+    pub placed: bool,
+    /// Set on a linked sticky — the note it points at.
+    pub note_id: Option<String>,
+    /// Live note title/preview for a linked sticky (resolved at list time).
+    #[serde(default)]
+    pub note_title: Option<String>,
+    #[serde(default)]
+    pub note_preview: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct ImportResult {
     /// Notes created.

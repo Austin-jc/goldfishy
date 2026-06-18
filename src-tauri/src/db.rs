@@ -5,7 +5,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::{AppHandle, Manager};
 
-use crate::models::{ActionItem, AppSettings, Folder, Note, NoteTag, TagCount};
+use crate::models::{ActionItem, AppSettings, Folder, Note, NoteTag, Sticky, TagCount};
 
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -151,6 +151,24 @@ fn migrate(conn: &Connection) -> Result<()> {
             rank REAL NOT NULL,
             updated_at INTEGER NOT NULL
         );
+
+        -- Stickies: ephemeral, spatial thoughts on the Wall — a separate object
+        -- from notes. A linked sticky (note_id set) is a pointer to a note;
+        -- everything else owns its own text. Stickies never enter the LLM
+        -- pipeline. (Embedding columns / FTS arrive with Phase 2 search.)
+        CREATE TABLE IF NOT EXISTS stickies (
+            id TEXT PRIMARY KEY,
+            text TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT 'yellow',
+            x REAL NOT NULL DEFAULT 0,
+            y REAL NOT NULL DEFAULT 0,
+            z INTEGER NOT NULL DEFAULT 0,
+            placed INTEGER NOT NULL DEFAULT 0,
+            note_id TEXT REFERENCES notes(id) ON DELETE CASCADE,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_stickies_z ON stickies(z);
         "#,
     )?;
     Ok(())
@@ -448,6 +466,53 @@ pub fn get_action_item(conn: &Connection, id: &str) -> Result<ActionItem> {
 const MAX_VERSIONS_PER_NOTE: i64 = 20;
 /// Don't snapshot more often than this — autosave fires every 600ms.
 const VERSION_MIN_GAP_MS: i64 = 10 * 60 * 1000;
+
+// ----------------------------------------------------------------- stickies
+
+/// A linked sticky carries its note's live title + a one-line preview (summary
+/// if present, else a content excerpt), resolved by this join so the Wall
+/// renders without a second fetch. Non-linked rows leave both NULL.
+const STICKY_SELECT: &str = "SELECT s.id, s.text, s.color, s.x, s.y, s.z, s.placed, s.note_id, \
+    n.title, COALESCE(NULLIF(TRIM(n.summary), ''), substr(n.content, 1, 160)), \
+    s.created_at, s.updated_at \
+    FROM stickies s LEFT JOIN notes n ON n.id = s.note_id AND n.deleted_at IS NULL";
+
+fn row_to_sticky(row: &rusqlite::Row) -> rusqlite::Result<Sticky> {
+    Ok(Sticky {
+        id: row.get(0)?,
+        text: row.get(1)?,
+        color: row.get(2)?,
+        x: row.get(3)?,
+        y: row.get(4)?,
+        z: row.get(5)?,
+        placed: row.get(6)?,
+        note_id: row.get(7)?,
+        note_title: row.get(8)?,
+        note_preview: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+pub fn get_sticky(conn: &Connection, id: &str) -> Result<Sticky> {
+    let sql = format!("{STICKY_SELECT} WHERE s.id = ?1");
+    Ok(conn.query_row(&sql, params![id], row_to_sticky)?)
+}
+
+/// All stickies, ordered back-to-front (so the UI renders higher z last).
+pub fn list_stickies(conn: &Connection) -> Result<Vec<Sticky>> {
+    let sql = format!("{STICKY_SELECT} ORDER BY s.z ASC, s.created_at ASC");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_to_sticky)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Next z value (max + 1) — assigned on create and on every move, so the
+/// last-touched sticky sits on top, like a physical one.
+pub fn next_sticky_z(conn: &Connection) -> i64 {
+    conn.query_row("SELECT COALESCE(MAX(z), 0) + 1 FROM stickies", [], |r| r.get(0))
+        .unwrap_or(1)
+}
 
 /// Unconditionally store a version snapshot (and trim to the cap).
 pub fn snapshot_note(conn: &Connection, note_id: &str, title: &str, content: &str) -> Result<()> {

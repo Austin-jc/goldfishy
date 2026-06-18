@@ -32,6 +32,36 @@ export interface Note {
   matched_by?: "keyword" | "semantic" | "both";
 }
 
+/** The hand-chosen sticky colors (the palette the swatch picker offers).
+ *  `blue` is the default for linked stickies (a pointer, not a thought). */
+export type StickyColor =
+  | "yellow"
+  | "green"
+  | "blue"
+  | "pink"
+  | "orange"
+  | "purple"
+  | "gray";
+
+/** A sticky on the Wall. A text sticky owns `text`; a linked sticky has
+ *  `note_id` set and shows the note's `note_title`/`note_preview`. */
+export interface Sticky {
+  id: string;
+  text: string;
+  color: StickyColor;
+  x: number;
+  y: number;
+  z: number;
+  /** false = sitting in the Inbox, not yet hand-placed on the Wall. */
+  placed: boolean;
+  note_id: string | null;
+  /** Live note title/preview for a linked sticky; null on text stickies. */
+  note_title: string | null;
+  note_preview: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface Folder {
   id: string;
   name: string;
@@ -180,7 +210,7 @@ export interface View {
 }
 
 /** Which curated feed the Board is showing. */
-export type BoardMode = "clusters" | "recent" | "stale" | "pinned";
+export type BoardMode = "wall" | "clusters" | "recent" | "stale" | "pinned";
 
 /** One semantic cluster on the Board; corrections attach to `anchor_id`. */
 export interface BoardCluster {
