@@ -332,7 +332,7 @@ const StickyCard = memo(function StickyCard({
       } ${dimmed ? "opacity-30" : ""} ${ghost ? "rotate-2 shadow-xl shadow-black/50" : ""}`}
     >
       {linked ? (
-        <div className={isInbox ? "min-h-[44px]" : "min-h-[64px]"}>
+        <div className={isInbox ? "min-h-[40px] pr-3" : "min-h-[52px] pr-3"}>
           <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide text-stone-600">
             <ExternalLink size={9} />
             note
@@ -365,16 +365,16 @@ const StickyCard = memo(function StickyCard({
             }
           }}
           placeholder="Jot a thought…"
-          rows={isInbox ? 2 : 3}
+          rows={isInbox ? 2 : 2}
           className={`w-full resize-none bg-transparent text-[12.5px] leading-snug outline-none placeholder:text-stone-500 ${
-            isInbox ? "min-h-[44px]" : "min-h-[64px]"
+            isInbox ? "min-h-[34px]" : "min-h-[40px]"
           }`}
         />
       ) : (
         <p
           className={`whitespace-pre-wrap break-words text-[12.5px] leading-snug ${
-            isInbox ? "line-clamp-3 min-h-[44px]" : "min-h-[64px]"
-          } ${sticky.text.trim() ? "" : "italic text-stone-500"}`}
+            isInbox ? "line-clamp-3" : ""
+          } min-h-[28px] ${sticky.text.trim() ? "" : "italic text-stone-500"}`}
         >
           {sticky.text.trim() || "Empty — double-click to write"}
         </p>
@@ -388,6 +388,23 @@ const StickyCard = memo(function StickyCard({
         >
           Bigger than a sticky? → Promote to note
         </button>
+      )}
+
+      {/* folded bottom-right corner — the constant "this points to a note"
+          mark, legible whatever color the user picks */}
+      {linked && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 right-0"
+          style={{
+            width: 16,
+            height: 16,
+            background:
+              "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.22) 50%)",
+            clipPath: "polygon(100% 0, 0 100%, 100% 100%)",
+            borderBottomRightRadius: 2,
+          }}
+        />
       )}
 
       {/* hover toolbar */}
