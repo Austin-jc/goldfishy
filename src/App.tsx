@@ -99,6 +99,19 @@ export default function App() {
           run: () => void useStore.getState().selectNote(e.payload),
         });
       }),
+      listen<string>("sticky-captured", () => {
+        const st = useStore.getState();
+        // Keep the Wall live if it's already loaded; otherwise it loads on open.
+        if (st.stickiesLoaded) void st.refreshStickies();
+        st.toast("Sticky captured — it's in the Inbox", "success", {
+          label: "Open wall",
+          run: () => {
+            const s = useStore.getState();
+            s.setBoardMode("wall");
+            s.setBoardOpen(true);
+          },
+        });
+      }),
     ];
     return () => {
       if (tagRefresh) clearTimeout(tagRefresh);
