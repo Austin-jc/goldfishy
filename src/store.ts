@@ -69,6 +69,8 @@ interface Store {
   searchQuery: string;
   searchMode: SearchMode;
   searchResults: Note[] | null;
+  /** Sticky matches for the active search (shown as a group above notes). */
+  stickyResults: Sticky[] | null;
   searching: boolean;
   settingsOpen: boolean;
   paletteOpen: boolean;
@@ -99,6 +101,8 @@ interface Store {
   stickiesLoaded: boolean;
   /** A freshly-created sticky the Wall should open straight into edit mode. */
   focusStickyId: string | null;
+  /** A sticky the Wall should scroll to and pulse (e.g. from a search hit). */
+  highlightStickyId: string | null;
   sidebarCollapsed: boolean;
   theme: string;
   /** Editor line-number gutter (display-only, persisted to localStorage). */
@@ -136,6 +140,10 @@ interface Store {
   setSearchQuery: (q: string) => void;
   setSearchMode: (m: SearchMode) => void;
   setSearchResults: (r: Note[] | null) => void;
+  setStickyResults: (r: Sticky[] | null) => void;
+  /** Open the Wall and scroll/pulse a specific sticky (from a search hit). */
+  openWallToSticky: (id: string) => void;
+  setHighlightSticky: (id: string | null) => void;
   setSearching: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
@@ -209,6 +217,7 @@ export const useStore = create<Store>((set, get) => ({
   searchQuery: "",
   searchMode: "smart",
   searchResults: null,
+  stickyResults: null,
   searching: false,
   settingsOpen: false,
   paletteOpen: false,
@@ -229,6 +238,7 @@ export const useStore = create<Store>((set, get) => ({
   stickies: [],
   stickiesLoaded: false,
   focusStickyId: null,
+  highlightStickyId: null,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
@@ -410,7 +420,17 @@ export const useStore = create<Store>((set, get) => ({
   setQueue: (queue) => set({ queue }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setSearchMode: (searchMode) => set({ searchMode }),
-  setSearchResults: (searchResults) => set({ searchResults }),
+  // Clearing the search (null) also clears the sticky group; an actual result
+  // set leaves stickyResults to its own setter (the SearchBar fills both).
+  setSearchResults: (searchResults) =>
+    set(searchResults === null ? { searchResults, stickyResults: null } : { searchResults }),
+  setStickyResults: (stickyResults) => set({ stickyResults }),
+  openWallToSticky: (id) => {
+    const st = get();
+    st.setBoardMode("wall");
+    set({ boardOpen: true, focusMode: false, highlightStickyId: id });
+  },
+  setHighlightSticky: (highlightStickyId) => set({ highlightStickyId }),
   setSearching: (searching) => set({ searching }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),

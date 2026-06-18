@@ -523,6 +523,9 @@ fn row_to_sticky(row: &rusqlite::Row) -> rusqlite::Result<Sticky> {
         note_preview: row.get(9)?,
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
+        score: None,
+        snippet: None,
+        matched_by: None,
     })
 }
 

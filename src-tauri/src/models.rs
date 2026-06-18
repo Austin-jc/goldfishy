@@ -114,6 +114,14 @@ pub struct Sticky {
     pub note_preview: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    // Search-result extras — unset outside search.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub snippet: Option<String>,
+    /// "keyword" | "semantic" | "both" — which engine surfaced this result.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub matched_by: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

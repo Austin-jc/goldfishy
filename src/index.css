@@ -49,6 +49,26 @@ a:focus-visible,
   outline-offset: -1px;
 }
 
+/* A sticky opened from a search hit flashes an expanding accent ring. */
+@keyframes stickyPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-clay-500) 85%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 13px color-mix(in srgb, var(--color-clay-500) 0%, transparent);
+  }
+}
+.sticky-pulse {
+  animation: stickyPulse 1.4s ease-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticky-pulse {
+    animation: none;
+    outline: 2px solid var(--color-clay-500);
+    outline-offset: 2px;
+  }
+}
+
 /* Terra — cream, terracotta, indigo ink (light) */
 [data-theme="terra"] {
   color-scheme: light;

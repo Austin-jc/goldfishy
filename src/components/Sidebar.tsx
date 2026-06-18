@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Clock,
   Combine,
+  ExternalLink,
   FilePlus,
   FileText,
   Folder as FolderIcon,
@@ -53,11 +54,12 @@ import {
   recencyBucket,
   RECENCY_BUCKETS,
   relativeTime,
+  snippetHtml,
 } from "../utils";
 import ContextMenu from "./ContextMenu";
 import GoldfishLogo from "./GoldfishLogo";
 import { NoteItem, SearchBar, SummaryBar } from "./NoteList";
-import type { Folder, Note } from "../types";
+import type { Folder, Note, Sticky } from "../types";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 480;
@@ -157,6 +159,7 @@ export default function Sidebar() {
   const notes = useStore((s) => s.notes);
   const tagFilter = useStore((s) => s.tagFilter);
   const searchResults = useStore((s) => s.searchResults);
+  const stickyResults = useStore((s) => s.stickyResults);
   const searchQuery = useStore((s) => s.searchQuery);
   const selectView = useStore((s) => s.selectView);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
@@ -487,9 +490,23 @@ export default function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {searchResults ? (
           <div className="mt-1">
-            <div className="px-4 pb-1">
+            {/* sticky matches first — a thought is never unfindable */}
+            {stickyResults && stickyResults.length > 0 && (
+              <div className="pb-1">
+                <p className="flex items-center gap-1 px-4 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                  <StickyNote size={11} />
+                  Stickies · {stickyResults.length}
+                </p>
+                <div className="space-y-0.5 px-2">
+                  {stickyResults.map((s) => (
+                    <StickyResultRow key={s.id} sticky={s} />
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="px-4 pb-1 pt-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-                Results · {searchResults.length}
+                Notes · {searchResults.length}
               </span>
             </div>
             {/* grouped by recency — rank order kept within each group */}
@@ -511,7 +528,7 @@ export default function Sidebar() {
                 </div>
               );
             })}
-            {searchResults.length === 0 && (
+            {searchResults.length === 0 && (stickyResults?.length ?? 0) === 0 && (
               <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-stone-600">
                 <FileText size={20} strokeWidth={1.5} />
                 <p className="text-xs">No results</p>
@@ -828,6 +845,53 @@ export default function Sidebar() {
       ) : null}
     </DragOverlay>
     </DndContext>
+  );
+}
+
+/** Muted color dot for a sticky in search results. */
+const STICKY_DOT: Record<string, string> = {
+  yellow: "bg-amber-300",
+  green: "bg-lime-300",
+  blue: "bg-sky-300",
+  pink: "bg-pink-300",
+  orange: "bg-orange-300",
+  purple: "bg-violet-300",
+  gray: "bg-stone-400",
+};
+
+/** A sticky search hit — clicking opens the Wall and pulses the sticky. */
+function StickyResultRow({ sticky }: { sticky: Sticky }) {
+  const linked = sticky.note_id !== null;
+  const title = linked
+    ? sticky.note_title?.trim() || "Untitled note"
+    : sticky.text.trim() || "Empty sticky";
+  return (
+    <button
+      onClick={() => useStore.getState().openWallToSticky(sticky.id)}
+      title="Show on the Wall"
+      className="flex w-full cursor-pointer items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors hover:bg-stone-800/60"
+    >
+      <span
+        className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-sm ${STICKY_DOT[sticky.color] ?? "bg-amber-300"}`}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1">
+          {linked && <ExternalLink size={10} className="shrink-0 text-stone-500" />}
+          <span className="truncate text-[12.5px] text-stone-200">{title}</span>
+          {sticky.matched_by === "semantic" && (
+            <span title="Matched by meaning" className="flex shrink-0">
+              <Sparkles size={10} className="text-sage-500" />
+            </span>
+          )}
+        </span>
+        {sticky.snippet && (
+          <span
+            className="search-snippet mt-0.5 line-clamp-1 text-[11px] text-stone-500"
+            dangerouslySetInnerHTML={{ __html: snippetHtml(sticky.snippet) }}
+          />
+        )}
+      </span>
+    </button>
   );
 }
 

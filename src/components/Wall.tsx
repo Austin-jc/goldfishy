@@ -60,7 +60,9 @@ interface DragSession {
 export default function Wall() {
   const stickies = useStore((s) => s.stickies);
   const focusStickyId = useStore((s) => s.focusStickyId);
+  const highlightStickyId = useStore((s) => s.highlightStickyId);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [pulsingId, setPulsingId] = useState<string | null>(null);
   /** The sticky riding the pointer mid-drag (also dims the original). */
   const [ghost, setGhost] = useState<{ x: number; y: number; sticky: Sticky } | null>(null);
 
@@ -83,6 +85,25 @@ export default function Wall() {
       useStore.getState().setFocusSticky(null);
     }
   }, [focusStickyId]);
+
+  // A sticky opened from a search hit scrolls into view and pulses.
+  useEffect(() => {
+    if (!highlightStickyId) return;
+    const id = highlightStickyId;
+    useStore.getState().setHighlightSticky(null);
+    // Wait a frame so a just-mounted Wall has rendered the sticky.
+    const raf = requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-sticky="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      setPulsingId(id);
+    });
+    const t = setTimeout(() => setPulsingId(null), 1800);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [highlightStickyId]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -188,6 +209,7 @@ export default function Wall() {
                 variant="inbox"
                 editing={editingId === s.id}
                 dimmed={ghost?.sticky.id === s.id}
+                pulse={pulsingId === s.id}
                 onEdit={() => setEditingId(s.id)}
                 onStopEdit={() => setEditingId(null)}
                 onDragStart={(e) => startDrag(e, s)}
@@ -225,6 +247,7 @@ export default function Wall() {
                 variant="wall"
                 editing={editingId === s.id}
                 dimmed={ghost?.sticky.id === s.id}
+                pulse={pulsingId === s.id}
                 onEdit={() => setEditingId(s.id)}
                 onStopEdit={() => setEditingId(null)}
                 onDragStart={(e) => startDrag(e, s)}
@@ -256,6 +279,7 @@ interface CardProps {
   editing: boolean;
   dimmed: boolean;
   ghost?: boolean;
+  pulse?: boolean;
   onEdit?: () => void;
   onStopEdit?: () => void;
   onDragStart?: (e: React.PointerEvent) => void;
@@ -267,6 +291,7 @@ const StickyCard = memo(function StickyCard({
   editing,
   dimmed,
   ghost,
+  pulse,
   onEdit,
   onStopEdit,
   onDragStart,
@@ -317,6 +342,7 @@ const StickyCard = memo(function StickyCard({
 
   return (
     <div
+      data-sticky={sticky.id}
       onPointerDown={(e) => {
         if (editing) return; // let the textarea own the pointer
         onDragStart?.(e);
@@ -329,7 +355,7 @@ const StickyCard = memo(function StickyCard({
       style={{ width, rotate: `${tilt}deg` }}
       className={`group/sticky relative rounded-sm ${COLOR_BG[sticky.color]} px-2.5 py-2 text-stone-900 shadow-md shadow-black/40 transition-[opacity,transform] ${
         editing ? "cursor-text" : ghost ? "cursor-grabbing" : "cursor-grab"
-      } ${dimmed ? "opacity-30" : ""} ${ghost ? "rotate-2 shadow-xl shadow-black/50" : ""}`}
+      } ${dimmed ? "opacity-30" : ""} ${pulse ? "sticky-pulse" : ""} ${ghost ? "rotate-2 shadow-xl shadow-black/50" : ""}`}
     >
       {linked ? (
         <div className={isInbox ? "min-h-[40px] pr-3" : "min-h-[52px] pr-3"}>

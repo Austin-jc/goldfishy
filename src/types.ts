@@ -60,6 +60,10 @@ export interface Sticky {
   note_preview: string | null;
   created_at: number;
   updated_at: number;
+  /** Search-result extras — unset outside search. */
+  score?: number;
+  snippet?: string;
+  matched_by?: "keyword" | "semantic" | "both";
 }
 
 export interface Folder {

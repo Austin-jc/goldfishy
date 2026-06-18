@@ -31,9 +31,13 @@ export function SearchBar() {
     const seq = ++runSeq.current;
     st.setSearching(true);
     try {
-      const results = await api.searchNotes(query, m);
+      const [results, stickies] = await Promise.all([
+        api.searchNotes(query, m),
+        api.searchStickies(query, m),
+      ]);
       if (seq !== runSeq.current) return; // a newer search superseded this one
       st.setSearchResults(results);
+      st.setStickyResults(stickies);
       st.setSearchQuery(query);
     } catch (e) {
       st.toast(String(e), "error");

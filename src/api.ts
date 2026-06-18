@@ -84,6 +84,8 @@ export const api = {
 
   // stickies (the Wall)
   listStickies: () => invoke<Sticky[]>("list_stickies"),
+  searchStickies: (query: string, mode: SearchMode) =>
+    invoke<Sticky[]>("search_stickies", { query, mode }),
   /** placed=true only when the user pointed at where it goes (Wall double-click). */
   createSticky: (text: string, color: StickyColor, x: number, y: number, placed: boolean) =>
     invoke<Sticky>("create_sticky", { text, color, x, y, placed }),

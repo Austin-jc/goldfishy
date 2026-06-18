@@ -129,6 +129,7 @@ pub fn run() {
             commands::set_board_order,
             commands::stale_ideas,
             commands::list_stickies,
+            commands::search_stickies,
             commands::create_sticky,
             commands::update_sticky,
             commands::delete_sticky,

@@ -439,6 +439,141 @@ pub async fn search_notes(app: AppHandle, query: String, mode: String) -> CmdRes
     }
 }
 
+/// bm25-ranked sticky FTS hits: (sticky id, highlighted snippet, bm25).
+fn sticky_keyword_ranked(
+    db: &rusqlite::Connection,
+    q: &str,
+    limit: usize,
+) -> CmdResult<Vec<(String, String, f64)>> {
+    let match_q = fts_query(q);
+    if match_q.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut stmt = db
+        .prepare(
+            "SELECT s.id,
+                    snippet(stickies_fts, 0, '<mark>', '</mark>', ' … ', 12),
+                    bm25(stickies_fts)
+             FROM stickies_fts
+             JOIN stickies s ON s.rowid = stickies_fts.rowid
+             WHERE stickies_fts MATCH ?1
+             ORDER BY bm25(stickies_fts)
+             LIMIT ?2",
+        )
+        .map_err(estr)?;
+    let rows = stmt
+        .query_map(params![match_q, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .map_err(estr)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Cosine-ranked sticky hits over text-sticky embeddings, best first.
+async fn sticky_semantic_ranked(app: &AppHandle, q: &str) -> CmdResult<Vec<(String, f32)>> {
+    let vectors = embed::embed_texts(app.clone(), vec![q.to_string()])
+        .await
+        .map_err(eanyhow)?;
+    let qv = vectors
+        .into_iter()
+        .next()
+        .ok_or_else(|| "embedding failed".to_string())?;
+    let state = app.state::<AppState>();
+    let (threshold, mut scored): (f32, Vec<(String, f32)>) = {
+        let db = state.db.lock().unwrap();
+        let threshold = db::load_settings(&db).semantic_search_threshold.clamp(0.0, 1.0);
+        let mut stmt = db
+            .prepare(
+                "SELECT id, embedding FROM stickies
+                 WHERE embedding IS NOT NULL AND note_id IS NULL",
+            )
+            .map_err(estr)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)))
+            .map_err(estr)?;
+        let scored = rows
+            .filter_map(|r| r.ok())
+            .map(|(id, blob)| (id, embed::cosine(&qv, &embed::from_blob(&blob))))
+            .collect();
+        (threshold, scored)
+    };
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, s)| *s > threshold);
+    scored.truncate(SEMANTIC_TOP);
+    Ok(scored)
+}
+
+/// Search stickies — same keyword / semantic / smart modes as notes, surfaced
+/// as a small group above the note results so a thought is never unfindable.
+#[tauri::command]
+pub async fn search_stickies(app: AppHandle, query: String, mode: String) -> CmdResult<Vec<Sticky>> {
+    let q = query.trim().to_string();
+    if q.is_empty() {
+        return Ok(vec![]);
+    }
+    let state = app.state::<AppState>();
+
+    // Collect (id, snippet, matched_by) with a fused rank, then hydrate.
+    let kw: Vec<(String, String, f64)> = if mode == "semantic" {
+        vec![]
+    } else {
+        let db = state.db.lock().unwrap();
+        sticky_keyword_ranked(&db, &q, 30)?
+    };
+    let embedder_ready =
+        state.embedder_phase.load(Ordering::Relaxed) == crate::state::embedder_phase::READY;
+    let sem: Vec<(String, f32)> = if mode != "keyword" && embedder_ready {
+        sticky_semantic_ranked(&app, &q).await.unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    const RRF_K: f32 = 60.0;
+    #[derive(Default)]
+    struct Fused {
+        score: f32,
+        snippet: Option<String>,
+        kw: bool,
+        sem: bool,
+    }
+    let mut fused: HashMap<String, Fused> = HashMap::new();
+    for (i, (id, snip, _)) in kw.iter().enumerate() {
+        let e = fused.entry(id.clone()).or_default();
+        e.score += 1.0 / (RRF_K + (i + 1) as f32);
+        e.snippet = Some(snip.clone());
+        e.kw = true;
+    }
+    for (i, (id, _)) in sem.iter().enumerate() {
+        let e = fused.entry(id.clone()).or_default();
+        e.score += 1.0 / (RRF_K + (i + 1) as f32);
+        e.sem = true;
+    }
+    let mut ranked: Vec<(String, Fused)> = fused.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.score.partial_cmp(&a.1.score).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.truncate(20);
+
+    let db = state.db.lock().unwrap();
+    let mut out = Vec::new();
+    for (id, f) in ranked {
+        if let Ok(mut s) = db::get_sticky(&db, &id) {
+            s.snippet = f.snippet;
+            s.score = Some(f.score);
+            s.matched_by = Some(
+                match (f.kw, f.sem) {
+                    (true, true) => "both",
+                    (false, true) => "semantic",
+                    _ => "keyword",
+                }
+                .to_string(),
+            );
+            out.push(s);
+        }
+    }
+    Ok(out)
+}
+
 /// Most similar notes to the given one, by embedding cosine similarity.
 #[tauri::command]
 pub async fn related_notes(app: AppHandle, note_id: String) -> CmdResult<Vec<Note>> {
