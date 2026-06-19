@@ -1207,6 +1207,50 @@ pub async fn promote_sticky(app: AppHandle, id: String) -> CmdResult<Note> {
     db::get_note(&db, &note_id).map_err(eanyhow)
 }
 
+/// Roll a hand-picked group of stickies up into one note (each sticky a
+/// bullet) and consume them — the digital "collect the whiteboard." Bullets
+/// follow the given id order (the Wall passes them top-to-bottom). Linked
+/// stickies contribute their note title.
+#[tauri::command]
+pub async fn roll_up_stickies(app: AppHandle, ids: Vec<String>) -> CmdResult<Note> {
+    if ids.is_empty() {
+        return Err("No stickies selected".into());
+    }
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let mut bullets = String::new();
+    for id in &ids {
+        if let Ok(s) = db::get_sticky(&db, id) {
+            let line = if s.note_id.is_some() {
+                s.note_title.clone().unwrap_or_default()
+            } else {
+                s.text.clone()
+            };
+            let line = line.trim().replace('\n', " ");
+            if !line.is_empty() {
+                bullets.push_str(&format!("- {line}\n"));
+            }
+        }
+    }
+    if bullets.is_empty() {
+        return Err("The selected stickies are empty".into());
+    }
+    let note_id = Uuid::new_v4().to_string();
+    let now = now_ms();
+    db.execute(
+        "INSERT INTO notes(id, title, content, folder_id, created_at, updated_at,
+                           embedding_status, llm_status)
+         VALUES (?1, '', ?2, NULL, ?3, ?3, 'STALE', 'STALE')",
+        params![note_id, bullets, now],
+    )
+    .map_err(estr)?;
+    for id in &ids {
+        db.execute("DELETE FROM stickies WHERE id = ?1", params![id]).map_err(estr)?;
+    }
+    state.last_activity.store(now, Ordering::Relaxed);
+    db::get_note(&db, &note_id).map_err(eanyhow)
+}
+
 /// Spin a note off as a *linked* sticky — a pointer that lands in the Inbox.
 /// The source note is never moved or changed.
 #[tauri::command]

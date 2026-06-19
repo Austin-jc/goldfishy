@@ -135,6 +135,7 @@ pub fn run() {
             commands::delete_sticky,
             commands::restore_sticky,
             commands::promote_sticky,
+            commands::roll_up_stickies,
             commands::stick_note,
             commands::list_folders,
             commands::create_folder,

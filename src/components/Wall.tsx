@@ -63,6 +63,17 @@ export default function Wall() {
   const highlightStickyId = useStore((s) => s.highlightStickyId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pulsingId, setPulsingId] = useState<string | null>(null);
+  /** Modifier-click selection — drives the Roll-up / Discard action bar. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearSelected = () => setSelected((s) => (s.size ? new Set() : s));
   /** The sticky riding the pointer mid-drag (also dims the original). */
   const [ghost, setGhost] = useState<{ x: number; y: number; sticky: Sticky } | null>(null);
 
@@ -164,6 +175,12 @@ export default function Wall() {
   const lastDown = useRef({ x: 0, y: 0 });
   const startDrag = (e: React.PointerEvent, sticky: Sticky) => {
     if (e.button !== 0) return;
+    // Modifier-click toggles selection instead of dragging.
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      toggleSelected(sticky.id);
+      return;
+    }
     const card = e.currentTarget.getBoundingClientRect();
     lastDown.current = { x: card.left, y: card.top };
     session.current = {
@@ -210,6 +227,7 @@ export default function Wall() {
                 editing={editingId === s.id}
                 dimmed={ghost?.sticky.id === s.id}
                 pulse={pulsingId === s.id}
+                selected={selected.has(s.id)}
                 onEdit={() => setEditingId(s.id)}
                 onStopEdit={() => setEditingId(null)}
                 onDragStart={(e) => startDrag(e, s)}
@@ -222,6 +240,9 @@ export default function Wall() {
       <div
         ref={scrollRef}
         className="relative flex-1 overflow-auto"
+        onClick={(e) => {
+          if (e.target === e.currentTarget || e.target === layerRef.current) clearSelected();
+        }}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget || e.target === layerRef.current) {
             void createAt(e.clientX, e.clientY);
@@ -248,6 +269,7 @@ export default function Wall() {
                 editing={editingId === s.id}
                 dimmed={ghost?.sticky.id === s.id}
                 pulse={pulsingId === s.id}
+                selected={selected.has(s.id)}
                 onEdit={() => setEditingId(s.id)}
                 onStopEdit={() => setEditingId(null)}
                 onDragStart={(e) => startDrag(e, s)}
@@ -266,6 +288,47 @@ export default function Wall() {
           <StickyCard sticky={ghost.sticky} variant="wall" editing={false} dimmed={false} ghost />
         </div>
       )}
+
+      {/* selection action bar */}
+      {selected.size > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-stone-700 bg-stone-900/95 p-1 shadow-2xl shadow-black/60">
+            <span className="px-2 text-[11px] text-stone-400">{selected.size} selected</span>
+            <button
+              onClick={() => {
+                // reading order: top-to-bottom, then left-to-right
+                const ids = [...selected]
+                  .map((id) => stickies.find((s) => s.id === id))
+                  .filter((s): s is Sticky => !!s)
+                  .sort((a, b) => a.y - b.y || a.x - b.x)
+                  .map((s) => s.id);
+                clearSelected();
+                void useStore.getState().rollUpStickies(ids);
+              }}
+              className="flex cursor-pointer items-center gap-1 rounded-lg bg-clay-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-clay-500"
+            >
+              <FileUp size={12} />
+              Roll up into a note
+            </button>
+            <button
+              onClick={() => {
+                const ids = [...selected];
+                clearSelected();
+                void useStore.getState().discardStickies(ids);
+              }}
+              className="cursor-pointer rounded-lg px-2 py-1 text-[11px] text-stone-400 transition-colors hover:bg-stone-800 hover:text-red-300"
+            >
+              Discard
+            </button>
+            <button
+              onClick={clearSelected}
+              className="cursor-pointer rounded-lg px-2 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-800 hover:text-stone-300"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -280,6 +343,7 @@ interface CardProps {
   dimmed: boolean;
   ghost?: boolean;
   pulse?: boolean;
+  selected?: boolean;
   onEdit?: () => void;
   onStopEdit?: () => void;
   onDragStart?: (e: React.PointerEvent) => void;
@@ -292,6 +356,7 @@ const StickyCard = memo(function StickyCard({
   dimmed,
   ghost,
   pulse,
+  selected,
   onEdit,
   onStopEdit,
   onDragStart,
@@ -355,7 +420,9 @@ const StickyCard = memo(function StickyCard({
       style={{ width, rotate: `${tilt}deg` }}
       className={`group/sticky relative rounded-sm ${COLOR_BG[sticky.color]} px-2.5 py-2 text-stone-900 shadow-md shadow-black/40 transition-[opacity,transform] ${
         editing ? "cursor-text" : ghost ? "cursor-grabbing" : "cursor-grab"
-      } ${dimmed ? "opacity-30" : ""} ${pulse ? "sticky-pulse" : ""} ${ghost ? "rotate-2 shadow-xl shadow-black/50" : ""}`}
+      } ${dimmed ? "opacity-30" : ""} ${pulse ? "sticky-pulse" : ""} ${
+        selected ? "ring-2 ring-clay-500 ring-offset-2 ring-offset-stone-950" : ""
+      } ${ghost ? "rotate-2 shadow-xl shadow-black/50" : ""}`}
     >
       {linked ? (
         <div className={isInbox ? "min-h-[40px] pr-3" : "min-h-[52px] pr-3"}>

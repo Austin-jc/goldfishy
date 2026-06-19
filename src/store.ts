@@ -184,6 +184,10 @@ interface Store {
   discardSticky: (id: string) => Promise<void>;
   /** Promote a text sticky to a note (consumes the sticky). */
   promoteSticky: (id: string) => Promise<void>;
+  /** Roll a group of stickies (id order = reading order) into one note. */
+  rollUpStickies: (ids: string[]) => Promise<void>;
+  /** Discard several stickies at once, with a single Undo toast. */
+  discardStickies: (ids: string[]) => Promise<void>;
   /** Spin a note off as a linked sticky in the Inbox. */
   stickNoteToWall: (noteId: string) => Promise<void>;
   /** ⌘⇧K: capture a blank sticky into the Inbox and open the Wall on it. */
@@ -629,6 +633,50 @@ export const useStore = create<Store>((set, get) => ({
     } catch (e) {
       get().toast(String(e), "error");
     }
+  },
+
+  rollUpStickies: async (ids) => {
+    if (ids.length === 0) return;
+    try {
+      const note = await api.rollUpStickies(ids);
+      const idset = new Set(ids);
+      set((s) => ({ stickies: s.stickies.filter((k) => !idset.has(k.id)) }));
+      await get().refreshNotes();
+      get().toast(
+        `Rolled ${ids.length} stick${ids.length === 1 ? "y" : "ies"} into a note`,
+        "success",
+        { label: "Open", run: () => void get().selectNote(note.id) },
+      );
+    } catch (e) {
+      get().toast(String(e), "error");
+      void get().refreshStickies();
+    }
+  },
+
+  discardStickies: async (ids) => {
+    if (ids.length === 0) return;
+    const idset = new Set(ids);
+    set((s) => ({ stickies: s.stickies.filter((k) => !idset.has(k.id)) }));
+    const removed: Sticky[] = [];
+    for (const id of ids) {
+      try {
+        removed.push(await api.deleteSticky(id));
+      } catch {
+        // already gone — skip
+      }
+    }
+    get().toast(`Discarded ${removed.length} stick${removed.length === 1 ? "y" : "ies"}`, "info", {
+      label: "Undo",
+      run: () => {
+        removed.forEach((r) => {
+          void api.restoreSticky(r).then((rr) => {
+            if (rr) {
+              set((s) => ({ stickies: [...s.stickies.filter((k) => k.id !== rr.id), rr] }));
+            }
+          });
+        });
+      },
+    });
   },
 
   stickNoteToWall: async (noteId) => {

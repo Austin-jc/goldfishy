@@ -105,6 +105,8 @@ export const api = {
   restoreSticky: (sticky: Sticky) => invoke<Sticky | null>("restore_sticky", { sticky }),
   /** Text sticky → new note (pipeline takes over); the sticky is consumed. */
   promoteSticky: (id: string) => invoke<Note>("promote_sticky", { id }),
+  /** Roll a group of stickies into one note (bullets); consumes them. */
+  rollUpStickies: (ids: string[]) => invoke<Note>("roll_up_stickies", { ids }),
   /** Note → linked sticky in the Inbox (the note is untouched). */
   stickNote: (noteId: string) => invoke<Sticky>("stick_note", { noteId }),
 
