@@ -86,6 +86,8 @@ export const api = {
   listStickies: () => invoke<Sticky[]>("list_stickies"),
   /** Semantic groups of placed sticky ids (for Tidy the wall). */
   clusterStickies: () => invoke<string[][]>("cluster_stickies"),
+  /** The most-similar other text sticky, if any (ambient hint). */
+  similarSticky: (id: string) => invoke<Sticky | null>("similar_sticky", { id }),
   searchStickies: (query: string, mode: SearchMode) =>
     invoke<Sticky[]>("search_stickies", { query, mode }),
   /** placed=true only when the user pointed at where it goes (Wall double-click). */

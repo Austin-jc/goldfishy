@@ -130,6 +130,7 @@ pub fn run() {
             commands::stale_ideas,
             commands::list_stickies,
             commands::cluster_stickies,
+            commands::similar_sticky,
             commands::search_stickies,
             commands::create_sticky,
             commands::update_sticky,

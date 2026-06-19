@@ -159,6 +159,8 @@ export interface AppSettings {
   board_preview: "summary" | "excerpt";
   /** What the explorer hover preview shows. */
   hover_preview: "summary" | "excerpt";
+  /** Opt-in ambient "similar to …" hints after editing a sticky. */
+  sticky_ambient_hints: boolean;
 }
 
 export interface BackupResult {

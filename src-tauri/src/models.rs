@@ -228,6 +228,10 @@ pub struct AppSettings {
     pub board_preview: String,
     /// What the explorer hover preview shows: "summary" | "excerpt".
     pub hover_preview: String,
+    /// Opt-in: after editing a sticky, surface a dismissible "similar to …"
+    /// hint (cosine over sticky embeddings). Off by default — the Wall is the
+    /// one surface where AI stays out of the way unless asked.
+    pub sticky_ambient_hints: bool,
 }
 
 impl Default for AppSettings {
@@ -260,6 +264,7 @@ impl Default for AppSettings {
             note_summary_style: "blurb".into(),
             board_preview: "summary".into(),
             hover_preview: "summary".into(),
+            sticky_ambient_hints: false,
         }
     }
 }

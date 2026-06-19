@@ -96,6 +96,7 @@ export default function Wall() {
   const stickies = useStore((s) => s.stickies);
   const focusStickyId = useStore((s) => s.focusStickyId);
   const highlightStickyId = useStore((s) => s.highlightStickyId);
+  const stickyHint = useStore((s) => s.stickyHint);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pulsingId, setPulsingId] = useState<string | null>(null);
   /** Modifier-click selection — drives the Roll-up / Discard action bar. */
@@ -396,6 +397,45 @@ export default function Wall() {
           style={{ left: ghost.x, top: ghost.y, width: STICKY_W }}
         >
           <StickyCard sticky={ghost.sticky} variant="wall" editing={false} dimmed={false} ghost />
+        </div>
+      )}
+
+      {/* ambient similar-sticky hint (opt-in) — sage = AI-derived, dismissible */}
+      {stickyHint && (
+        <div className="absolute inset-x-0 bottom-16 z-40 flex justify-center">
+          <div className="flex max-w-md items-center gap-2 rounded-xl border border-sage-700/60 bg-stone-900/95 p-1 pl-2.5 shadow-2xl shadow-black/60">
+            <Sparkles size={12} className="shrink-0 text-sage-400" />
+            <span className="min-w-0 truncate text-[11px] text-stone-300">
+              Looks like “
+              {(stickyHint.similar.note_title?.trim() ||
+                stickyHint.similar.text.trim() ||
+                "another sticky").slice(0, 48)}
+              ”
+            </span>
+            <button
+              onClick={() => {
+                const sid = stickyHint.similar.id;
+                useStore.getState().dismissStickyHint();
+                useStore.getState().openWallToSticky(sid);
+              }}
+              className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-[11px] text-stone-300 transition-colors hover:bg-stone-800 hover:text-sage-300"
+            >
+              Jump
+            </button>
+            <button
+              onClick={() => void useStore.getState().mergeStickyHint()}
+              className="shrink-0 cursor-pointer rounded-lg bg-sage-700/80 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-sage-700"
+            >
+              Merge
+            </button>
+            <button
+              onClick={() => useStore.getState().dismissStickyHint()}
+              title="Dismiss"
+              className="shrink-0 cursor-pointer rounded-lg p-1 text-stone-500 transition-colors hover:bg-stone-800 hover:text-stone-300"
+            >
+              <X size={12} />
+            </button>
+          </div>
         </div>
       )}
 

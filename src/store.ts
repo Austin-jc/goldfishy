@@ -103,6 +103,8 @@ interface Store {
   focusStickyId: string | null;
   /** A sticky the Wall should scroll to and pulse (e.g. from a search hit). */
   highlightStickyId: string | null;
+  /** Opt-in ambient hint: the just-edited sticky `id` looks like `similar`. */
+  stickyHint: { id: string; similar: Sticky } | null;
   sidebarCollapsed: boolean;
   theme: string;
   /** Editor line-number gutter (display-only, persisted to localStorage). */
@@ -144,6 +146,9 @@ interface Store {
   /** Open the Wall and scroll/pulse a specific sticky (from a search hit). */
   openWallToSticky: (id: string) => void;
   setHighlightSticky: (id: string | null) => void;
+  dismissStickyHint: () => void;
+  /** Merge the hinted sticky into its similar one and discard the original. */
+  mergeStickyHint: () => Promise<void>;
   setSearching: (b: boolean) => void;
   setSettingsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
@@ -245,6 +250,7 @@ export const useStore = create<Store>((set, get) => ({
   stickiesLoaded: false,
   focusStickyId: null,
   highlightStickyId: null,
+  stickyHint: null,
   sidebarCollapsed: localStorage.getItem("nn.sidebarCollapsed") === "1",
   theme: localStorage.getItem("nn.theme") ?? DEFAULT_THEME,
   lineNumbers: localStorage.getItem("nn.lineNumbers") === "1",
@@ -437,6 +443,36 @@ export const useStore = create<Store>((set, get) => ({
     set({ boardOpen: true, focusMode: false, highlightStickyId: id });
   },
   setHighlightSticky: (highlightStickyId) => set({ highlightStickyId }),
+  dismissStickyHint: () => set({ stickyHint: null }),
+  mergeStickyHint: async () => {
+    const h = get().stickyHint;
+    if (!h) return;
+    set({ stickyHint: null });
+    const cur = get().stickies.find((s) => s.id === h.id);
+    if (!cur) return;
+    const sim = get().stickies.find((s) => s.id === h.similar.id);
+    const targetId = h.similar.id;
+    const combined = [(sim?.text ?? h.similar.text).trim(), cur.text.trim()]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      // Raw calls (not saveSticky) so the merge doesn't re-trigger a hint.
+      const updated = await api.updateSticky(targetId, { text: combined });
+      await api.deleteSticky(cur.id);
+      set((s) => ({
+        stickies: s.stickies
+          .filter((k) => k.id !== cur.id)
+          .map((k) => (k.id === targetId ? updated : k)),
+      }));
+      get().toast("Stickies merged", "success", {
+        label: "Show",
+        run: () => get().openWallToSticky(targetId),
+      });
+    } catch (e) {
+      get().toast(String(e), "error");
+      void get().refreshStickies();
+    }
+  },
   setSearching: (searching) => set({ searching }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
@@ -600,6 +636,20 @@ export const useStore = create<Store>((set, get) => ({
     } catch (e) {
       get().toast(String(e), "error");
       void get().refreshStickies();
+      return;
+    }
+    // Ambient hint (opt-in) — only on a real text edit, never on drag/color.
+    if (
+      fields.text !== undefined &&
+      fields.text.trim() !== "" &&
+      get().settings?.sticky_ambient_hints
+    ) {
+      try {
+        const similar = await api.similarSticky(id);
+        if (similar && similar.id !== id) set({ stickyHint: { id, similar } });
+      } catch {
+        // hints are best-effort; never surface an error for them
+      }
     }
   },
 

@@ -1076,6 +1076,72 @@ pub async fn clear_board_link(app: AppHandle, note_id: String) -> CmdResult<()> 
 /// than note embeddings, so this is more permissive than the merge threshold.
 const STICKY_CLUSTER_THRESHOLD: f32 = 0.55;
 
+/// Cosine floor for the ambient "this looks like another sticky" hint —
+/// higher than clustering (we only nudge on near-duplicates).
+const STICKY_SIMILAR_THRESHOLD: f32 = 0.62;
+
+/// The single most-similar *other* text sticky, if any clears the threshold.
+/// Embeds the target on-demand when it has no stored vector yet, so the hint
+/// works the instant a sticky is written (not after the worker catches up).
+#[tauri::command]
+pub async fn similar_sticky(app: AppHandle, id: String) -> CmdResult<Option<Sticky>> {
+    let state = app.state::<AppState>();
+    let (stored, text): (Option<Vec<u8>>, String) = {
+        let db = state.db.lock().unwrap();
+        let s = db::get_sticky(&db, &id).map_err(eanyhow)?;
+        if s.note_id.is_some() {
+            return Ok(None); // linked stickies have no own text
+        }
+        let stored: Option<Vec<u8>> = db
+            .query_row("SELECT embedding FROM stickies WHERE id = ?1", params![id], |r| r.get(0))
+            .optional()
+            .map_err(estr)?
+            .flatten();
+        (stored, s.text)
+    };
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let qv = match stored {
+        Some(b) => embed::from_blob(&b),
+        None => embed::embed_texts(app.clone(), vec![text])
+            .await
+            .map_err(eanyhow)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "embedding failed".to_string())?,
+    };
+    let best: Option<String> = {
+        let db = state.db.lock().unwrap();
+        let mut stmt = db
+            .prepare(
+                "SELECT id, embedding FROM stickies
+                 WHERE embedding IS NOT NULL AND note_id IS NULL AND id != ?1",
+            )
+            .map_err(estr)?;
+        let mapped = stmt
+            .query_map(params![id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(estr)?;
+        let mut best: Option<(String, f32)> = None;
+        for (oid, blob) in mapped.filter_map(|r| r.ok()) {
+            let score = embed::cosine(&qv, &embed::from_blob(&blob));
+            if score > STICKY_SIMILAR_THRESHOLD && best.as_ref().is_none_or(|b| score > b.1) {
+                best = Some((oid, score));
+            }
+        }
+        best.map(|(oid, _)| oid)
+    };
+    match best {
+        Some(bid) => {
+            let db = state.db.lock().unwrap();
+            Ok(db::get_sticky(&db, &bid).ok())
+        }
+        None => Ok(None),
+    }
+}
+
 /// Group placed stickies by semantic similarity (union-find over embeddings),
 /// biggest clusters first; un-embedded / linked stickies trail as singletons.
 /// The frontend turns these groups into a spatial layout — clustering lives

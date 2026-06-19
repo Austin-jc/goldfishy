@@ -586,6 +586,21 @@ export default function SettingsModal() {
             </div>
           </section>
 
+          {/* ---------------- The Wall (stickies) ---------------- */}
+          <section>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
+              The Wall
+            </h3>
+            <div className="space-y-3 rounded-lg border border-stone-800 p-3">
+              <ToggleRow
+                label="Suggest similar stickies"
+                desc="After you write a sticky, quietly flag if it looks like one you already have, so you can jump to it or merge. Off by default — the Wall stays out of the way unless you ask. Runs locally on the sticky index; never sent anywhere."
+                value={local.sticky_ambient_hints}
+                onChange={(v) => set("sticky_ambient_hints", v)}
+              />
+            </div>
+          </section>
+
           {/* ---------------- Reminders & action items ---------------- */}
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
