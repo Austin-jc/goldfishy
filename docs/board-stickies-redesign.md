@@ -153,7 +153,7 @@ CREATE TABLE stickies (
 |---|---|---|
 | 1 ✅ | `stickies` table + CRUD; Wall tab with double-click create, free drag, colors, discard+Undo; the Inbox; promote-to-note; note/selection → sticky; ⌘⇧K | M |
 | 2 ✅ | Queue-1 embedding of text stickies; semantic+keyword search surfacing (glyph + center-on-Wall); capture-window note⇄sticky toggle; over-cap promote nudge; visual polish (lift, reduced-motion) | M |
-| 3 (opt-in) | "Tidy the wall" proposal overlay; "Roll up" cluster→note; Settings ambient-hints toggle + similar-sticky detection; sticky reminders | M |
+| 3 ✅ | "Tidy the wall" proposal overlay; "Roll up" cluster→note; Settings ambient-hints toggle + similar-sticky detection (sticky reminders deferred) | M |
 
 **Phase 1 shipped (2026-06-17).** Notes:
 - Soft cap (280 chars) shows the "Promote to note" nudge inside the editing sticky; rotation (±1.6°, reduced-motion aware) and lift shadow are in already.
@@ -167,5 +167,12 @@ CREATE TABLE stickies (
 - `search_stickies` mirrors the note search (keyword / semantic / smart-RRF); the sidebar shows a "Stickies" group above "Notes" with a color dot, a ✨ meaning badge for semantic-only hits, and a snippet. Clicking opens the Wall and pulses the sticky into view.
 - The capture window (⌘⇧N) gained a persisted Note/Sticky toggle; sticky mode drops straight into the Inbox via `sticky-captured`.
 - Verified: a SQLite smoke test exercised the FTS insert/update/delete triggers + bm25 search; the search-results group was screenshot-verified; tsc + vite build + cargo check all green.
+
+**Phase 3 shipped (2026-06-19).** The AI-on-the-Wall layer — summonable + opt-in, never silent:
+- **Multi-select + Roll up** (3a): modifier-click selects stickies (accent ring); a floating bar rolls the selection into one note (`roll_up_stickies`, bullets in top-to-bottom order, consumes them) or bulk-discards with a single Undo.
+- **Tidy the wall** (3b): `cluster_stickies` (union-find over embeddings, 0.55 floor) groups stickies; the frontend lays groups into columns and *previews* the move (animate-to-position, board frozen) with Keep/Revert — never persisted until Keep. Same consent pattern as auto-arrange.
+- **Ambient hints** (3c): Settings → The Wall toggle (default off). On a sticky text-commit, `similar_sticky` does an on-demand cosine over the local sticky index; a near-duplicate (>0.62) surfaces a dismissible sage hint (Jump / Merge / Dismiss). The one ambient-AI touch on the Wall, gated behind explicit opt-in.
+- **Deferred**: sticky reminders (would reach into the action-items/reminder system — lowest value, most scope creep; not built).
+- Verified: cargo check + tsc + vite build green throughout; the Tidy button, selection, and the hint bar were screenshot-confirmed.
 
 **Sources:** [Obsidian Canvas](https://help.obsidian.md/Plugins/Canvas) · [Obsidian Rocks: Getting started with Canvas](https://obsidian.rocks/getting-started-with-canvas-in-obsidian/) · [FigJam sticky notes](https://help.figma.com/hc/en-us/articles/1500004414322-Sticky-notes-in-FigJam) · [Miro stickies capture](https://miro.com/stickies-capture/) · [Google Keep design comparison](https://iarchnote.com/index.php/2025/02/10/google-keep-notes-the-beauty-of-minimalism-and-cognitive-load-a-fresh-comparison-with-notion-obsidian-and-logseq/) · [Apple Stickies (Wikipedia)](https://en.wikipedia.org/wiki/Stickies_(Apple)) · [SlashNote: Mac sticky notes guide](https://slashnote.app/blog/macos-sticky-notes-guide/)
