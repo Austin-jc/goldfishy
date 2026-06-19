@@ -1072,6 +1072,67 @@ pub async fn clear_board_link(app: AppHandle, note_id: String) -> CmdResult<()> 
 
 // ---------------------------------------------------------------- stickies
 
+/// Cosine floor for grouping two stickies. Short-text embeddings sit lower
+/// than note embeddings, so this is more permissive than the merge threshold.
+const STICKY_CLUSTER_THRESHOLD: f32 = 0.55;
+
+/// Group placed stickies by semantic similarity (union-find over embeddings),
+/// biggest clusters first; un-embedded / linked stickies trail as singletons.
+/// The frontend turns these groups into a spatial layout — clustering lives
+/// where the vectors are, layout lives where the canvas width is.
+#[tauri::command]
+pub async fn cluster_stickies(app: AppHandle) -> CmdResult<Vec<Vec<String>>> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let rows: Vec<(String, Option<Vec<u8>>)> = {
+        let mut stmt = db
+            .prepare("SELECT id, embedding FROM stickies WHERE placed = 1 ORDER BY z ASC")
+            .map_err(estr)?;
+        let mapped = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(estr)?;
+        mapped.filter_map(|r| r.ok()).collect()
+    };
+    let embedded: Vec<(String, Vec<f32>)> = rows
+        .iter()
+        .filter_map(|(id, blob)| blob.as_ref().map(|b| (id.clone(), embed::from_blob(b))))
+        .collect();
+
+    let n = embedded.len();
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    let mut parent: Vec<usize> = (0..n).collect();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if embed::cosine(&embedded[i].1, &embedded[j].1) > STICKY_CLUSTER_THRESHOLD {
+                let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                if a != b {
+                    parent[a] = b;
+                }
+            }
+        }
+    }
+    let mut groups: HashMap<usize, Vec<String>> = HashMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(embedded[i].0.clone());
+    }
+    let mut out: Vec<Vec<String>> = groups.into_values().collect();
+    out.sort_by(|a, b| b.len().cmp(&a.len()));
+    // un-embedded / linked stickies still get tidied — each its own column.
+    for (id, blob) in &rows {
+        if blob.is_none() {
+            out.push(vec![id.clone()]);
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn list_stickies(app: AppHandle) -> CmdResult<Vec<Sticky>> {
     let state = app.state::<AppState>();

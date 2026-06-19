@@ -186,6 +186,8 @@ interface Store {
   promoteSticky: (id: string) => Promise<void>;
   /** Roll a group of stickies (id order = reading order) into one note. */
   rollUpStickies: (ids: string[]) => Promise<void>;
+  /** Commit a reviewed tidy layout: move each sticky to its new x/y. */
+  applyStickyLayout: (layout: { id: string; x: number; y: number }[]) => Promise<void>;
   /** Discard several stickies at once, with a single Undo toast. */
   discardStickies: (ids: string[]) => Promise<void>;
   /** Spin a note off as a linked sticky in the Inbox. */
@@ -650,6 +652,23 @@ export const useStore = create<Store>((set, get) => ({
     } catch (e) {
       get().toast(String(e), "error");
       void get().refreshStickies();
+    }
+  },
+
+  applyStickyLayout: async (layout) => {
+    const pos = new Map(layout.map((l) => [l.id, l]));
+    set((s) => ({
+      stickies: s.stickies.map((k) => {
+        const p = pos.get(k.id);
+        return p ? { ...k, x: p.x, y: p.y, placed: true } : k;
+      }),
+    }));
+    for (const l of layout) {
+      try {
+        await api.updateSticky(l.id, { x: l.x, y: l.y, placed: true });
+      } catch {
+        // best-effort; a failed move just keeps its optimistic position
+      }
     }
   },
 

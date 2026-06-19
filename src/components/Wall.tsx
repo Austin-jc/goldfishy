@@ -1,5 +1,16 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ExternalLink, FileUp, Inbox, Palette, StickyNote, X } from "lucide-react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  ExternalLink,
+  FileUp,
+  Inbox,
+  Loader2,
+  Palette,
+  Sparkles,
+  StickyNote,
+  X,
+} from "lucide-react";
+import { api } from "../api";
 import { useStore } from "../store";
 import type { Sticky, StickyColor } from "../types";
 
@@ -47,6 +58,30 @@ function tiltFor(id: string): number {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Turn semantic groups into a spatial layout: each group a vertical column,
+ *  columns flowing left-to-right and wrapping down. */
+function computeTidyLayout(
+  groups: string[][],
+  width: number,
+): { id: string; x: number; y: number }[] {
+  const layout: { id: string; x: number; y: number }[] = [];
+  const colW = STICKY_W + 24;
+  const slotH = 100;
+  let curX = 16;
+  let rowTop = 16;
+  let rowMaxBottom = rowTop;
+  for (const group of groups) {
+    if (curX > 16 && curX + STICKY_W > width) {
+      curX = 16;
+      rowTop = rowMaxBottom + 24;
+    }
+    group.forEach((id, i) => layout.push({ id, x: curX, y: rowTop + i * slotH }));
+    rowMaxBottom = Math.max(rowMaxBottom, rowTop + group.length * slotH);
+    curX += colW;
+  }
+  return layout;
+}
+
 /** A live drag session (raw pointer), tracked in a ref to dodge stale closures. */
 interface DragSession {
   id: string;
@@ -74,6 +109,16 @@ export default function Wall() {
       return next;
     });
   const clearSelected = () => setSelected((s) => (s.size ? new Set() : s));
+
+  /** Proposed tidy layout awaiting Keep/Revert — never persisted on its own. */
+  const [tidyPreview, setTidyPreview] = useState<
+    { id: string; x: number; y: number }[] | null
+  >(null);
+  const [tidying, setTidying] = useState(false);
+  const previewMap = useMemo(
+    () => new Map((tidyPreview ?? []).map((p) => [p.id, p] as const)),
+    [tidyPreview],
+  );
   /** The sticky riding the pointer mid-drag (also dims the original). */
   const [ghost, setGhost] = useState<{ x: number; y: number; sticky: Sticky } | null>(null);
 
@@ -175,6 +220,7 @@ export default function Wall() {
   const lastDown = useRef({ x: 0, y: 0 });
   const startDrag = (e: React.PointerEvent, sticky: Sticky) => {
     if (e.button !== 0) return;
+    if (tidyPreview) return; // a tidy preview is under review — freeze the board
     // Modifier-click toggles selection instead of dragging.
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
       e.preventDefault();
@@ -204,8 +250,27 @@ export default function Wall() {
     if (created) setEditingId(created.id);
   };
 
+  const runTidy = async () => {
+    setTidying(true);
+    clearSelected();
+    try {
+      const groups = await api.clusterStickies();
+      setTidyPreview(computeTidyLayout(groups, Math.max(box.w, STICKY_W + 32)));
+    } catch (e) {
+      useStore.getState().toast(String(e), "error");
+    } finally {
+      setTidying(false);
+    }
+  };
+
+  const keepTidy = () => {
+    if (tidyPreview) void useStore.getState().applyStickyLayout(tidyPreview);
+    setTidyPreview(null);
+    useStore.getState().toast("Wall tidied", "success");
+  };
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="relative flex flex-1 flex-col overflow-hidden">
       {inbox.length > 0 && (
         <div
           ref={inboxRef}
@@ -244,6 +309,7 @@ export default function Wall() {
           if (e.target === e.currentTarget || e.target === layerRef.current) clearSelected();
         }}
         onDoubleClick={(e) => {
+          if (tidyPreview) return;
           if (e.target === e.currentTarget || e.target === layerRef.current) {
             void createAt(e.clientX, e.clientY);
           }
@@ -257,11 +323,13 @@ export default function Wall() {
               <p className="text-[10px] text-stone-700">⌘⇧K drops one from anywhere</p>
             </div>
           )}
-          {placed.map((s) => (
+          {placed.map((s) => {
+            const p = previewMap.get(s.id);
+            return (
             <div
               key={s.id}
-              className="absolute"
-              style={{ left: s.x, top: s.y, zIndex: s.z }}
+              className={`absolute ${tidyPreview ? "transition-all duration-300 ease-out" : ""}`}
+              style={{ left: p?.x ?? s.x, top: p?.y ?? s.y, zIndex: s.z }}
             >
               <StickyCard
                 sticky={s}
@@ -275,9 +343,51 @@ export default function Wall() {
                 onDragStart={(e) => startDrag(e, s)}
               />
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
+
+      {/* Tidy the wall — review-first, never moves a sticky silently */}
+      {placed.length >= 3 && !tidyPreview && selected.size === 0 && (
+        <button
+          onClick={() => void runTidy()}
+          disabled={tidying}
+          title="Group related stickies into tidy columns (you review before anything moves)"
+          className="absolute bottom-4 right-4 z-30 flex cursor-pointer items-center gap-1 rounded-lg border border-stone-700 bg-stone-900/90 px-2.5 py-1.5 text-[11px] text-stone-300 shadow-lg transition-colors hover:text-clay-300 disabled:opacity-60"
+        >
+          {tidying ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Sparkles size={12} />
+          )}
+          Tidy the wall
+        </button>
+      )}
+
+      {/* tidy preview review bar */}
+      {tidyPreview && (
+        <div className="absolute inset-x-0 bottom-4 z-40 flex justify-center">
+          <div className="flex items-center gap-1 rounded-xl border border-clay-700 bg-stone-900/95 p-1 shadow-2xl shadow-black/60">
+            <span className="px-2 text-[11px] text-stone-300">
+              Tidy preview — {tidyPreview.length} stick{tidyPreview.length === 1 ? "y" : "ies"} regrouped
+            </span>
+            <button
+              onClick={keepTidy}
+              className="flex cursor-pointer items-center gap-1 rounded-lg bg-clay-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-clay-500"
+            >
+              <Check size={12} />
+              Keep
+            </button>
+            <button
+              onClick={() => setTidyPreview(null)}
+              className="cursor-pointer rounded-lg px-2 py-1 text-[11px] text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
+            >
+              Revert
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* the sticky riding the pointer */}
       {ghost && (
